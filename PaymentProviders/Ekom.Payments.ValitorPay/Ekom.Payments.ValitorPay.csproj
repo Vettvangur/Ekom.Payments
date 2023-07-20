@@ -4,6 +4,35 @@
         <TargetFrameworks>net6.0</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+
+        <!-- Package properties -->
+        <PackageId>Ekom.Payments.ValitorPay</PackageId>
+        <Version>0.0.1</Version>
+        <Title>Ekom Payments ValitorPay</Title>
+        <Authors>Vettvangur</Authors>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
+        <PackageIcon>images\VV_Logo.png</PackageIcon>
+        <Description>Ekom Payments ValitorPay - Vettvangur E-Commerce solution</Description>
+        <PackageReleaseNotes></PackageReleaseNotes>
+        <Copyright>Copyright 2022</Copyright>
+        <PackageTags></PackageTags>
+
+        <!-- Optional: Publish the repository URL in the built .nupkg (in the NuSpec <Repository> element) -->
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+
+        <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+
+        <!-- Optional: Build symbol package (.snupkg) to distribute the PDB containing Source Link -->
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+        <!-- Enable NuGet package caching -->
+        <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
     </PropertyGroup>
 
     <ItemGroup>

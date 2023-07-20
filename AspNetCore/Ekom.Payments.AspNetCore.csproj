@@ -14,7 +14,7 @@
       <Title>Ekom Payments AspNetCore</Title>
       <Authors>Vettvangur</Authors>
       <PackageLicenseExpression>MIT</PackageLicenseExpression>
-      <PackageProjectUrl>https://github.com/Vettvangur/Ekom</PackageProjectUrl>
+      <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
       <PackageIcon>images\VV_Logo.png</PackageIcon>
       <Description>Ekom Payments ASP.NET Core - Vettvangur E-Commerce solution</Description>
       <PackageReleaseNotes></PackageReleaseNotes>

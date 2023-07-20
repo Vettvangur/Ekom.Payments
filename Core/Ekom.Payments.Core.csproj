@@ -15,7 +15,7 @@
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
         <PackageIcon>images\VV_Logo.png</PackageIcon>
-        <Description>Ekom Payment Providers. Allows configuration of payment providers within umbraco.</Description>
+        <Description>Ekom Payment Providers. Allows configuration of Ekom payment providers within umbraco.</Description>
         <PackageReleaseNotes>Initial</PackageReleaseNotes>
         <Copyright>Copyright 2023</Copyright>
         <PackageTags>Ekom Umbraco Payments</PackageTags>

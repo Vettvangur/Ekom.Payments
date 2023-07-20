@@ -15,7 +15,7 @@
         <Title>Ekom Payments Umbraco 10</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/Vettvangur/Ekom</PackageProjectUrl>
+        <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
         <PackageIcon>images\VV_Logo.png</PackageIcon>
         <Description>Ekom Payments Umbraco 10 - Vettvangur E-Commerce solution</Description>
         <PackageReleaseNotes></PackageReleaseNotes>
