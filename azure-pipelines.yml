@@ -8,7 +8,7 @@ name: $(majorMinorVersion).$(semanticVersion) # $(rev:r) # NOTE: rev resets when
 trigger:
   branches:
     include:
-      - Ekom
+      - main
   paths:
     exclude:
       - README.md
@@ -53,7 +53,7 @@ steps:
 - task: DotNetCoreCLI@2
   inputs:
     command: 'pack'
-    packagesToPack: '**/Ekom.csproj;**/Ekom.Common.csproj;**/Ekom.Payments.Core.csproj;**/Ekom.AspNetCore.csproj;**/Ekom.U10.csproj;**/Ekom.Web.csproj'
+    packagesToPack: '**/Ekom.Payments.Core.csproj;**/Ekom.Payments.AspNetCore.csproj;**/Ekom.Payments.U10.csproj;**/Ekom.Payments.Valitor.csproj;**/Ekom.Payments.ValitorPay.csproj'
     includesymbols: true
     versioningScheme: 'byBuildNumber'
 
