@@ -21,7 +21,7 @@ variables:
   # semanticVersion counter is automatically incremented by one in each execution of pipeline
   # second parameter is seed value to reset to every time the referenced majorMinorVersion is changed
   semanticVersion: $[counter(variables['majorMinorVersion'], 0)]
-  solution: '**/Ekom Build.sln'
+  solution: '**/Ekom.Payments.sln'
   buildPlatform: 'Any CPU'
   buildConfiguration: 'Release'
 
