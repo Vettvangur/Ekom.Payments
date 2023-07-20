@@ -1,0 +1,4 @@
+
+[submodule "PaymentProviders/ValitorPay"]
+	path = PaymentProviders/ValitorPay
+	url = https://github.com/Vettvangur/Vettvangur.ValitorPay

@@ -1,0 +1,72 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.33530.505
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Umbraco", "Umbraco", "{3FD0185E-BE2F-4BA0-8F1B-15043E08B6F7}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ekom.Payments.Core", "Core\Ekom.Payments.Core.csproj", "{B0D3CB55-D6A4-4CFC-A92D-EA48B0746097}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ekom.Payments.AspNetCore", "AspNetCore\Ekom.Payments.AspNetCore.csproj", "{4BC29197-3221-470E-BA3E-1758D4E870CA}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PaymentProviders", "PaymentProviders", "{2B11B5CF-D02F-4E45-8528-801F3F587010}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ekom.Payments.U10", "Umbraco\Ekom.Payments.U10\Ekom.Payments.U10.csproj", "{3266D2D0-16FC-4C52-8C1E-31706CA234B2}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ekom.Payments.AsynchronousExample", "PaymentProviders\Ekom.Payments.AsynchronousExample\Ekom.Payments.AsynchronousExample.csproj", "{EE518FD7-5FF0-4C56-97E6-799921609FD6}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ekom.Payments.Valitor", "PaymentProviders\Ekom.Payments.Valitor\Ekom.Payments.Valitor.csproj", "{148A7D06-9FCC-4087-8A54-DE2B0C7A92D7}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ekom.Payments.ValitorPay", "PaymentProviders\Ekom.Payments.ValitorPay\Ekom.Payments.ValitorPay.csproj", "{E95003CD-3382-45EE-9301-EA3529A278C1}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Vettvangur.ValitorPay", "PaymentProviders\ValitorPay\ValitorPay\Vettvangur.ValitorPay.csproj", "{8132A764-7BF9-402B-A410-B8F9FC001801}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B0D3CB55-D6A4-4CFC-A92D-EA48B0746097}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B0D3CB55-D6A4-4CFC-A92D-EA48B0746097}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B0D3CB55-D6A4-4CFC-A92D-EA48B0746097}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B0D3CB55-D6A4-4CFC-A92D-EA48B0746097}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4BC29197-3221-470E-BA3E-1758D4E870CA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4BC29197-3221-470E-BA3E-1758D4E870CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4BC29197-3221-470E-BA3E-1758D4E870CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4BC29197-3221-470E-BA3E-1758D4E870CA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3266D2D0-16FC-4C52-8C1E-31706CA234B2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3266D2D0-16FC-4C52-8C1E-31706CA234B2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3266D2D0-16FC-4C52-8C1E-31706CA234B2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3266D2D0-16FC-4C52-8C1E-31706CA234B2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EE518FD7-5FF0-4C56-97E6-799921609FD6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EE518FD7-5FF0-4C56-97E6-799921609FD6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EE518FD7-5FF0-4C56-97E6-799921609FD6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EE518FD7-5FF0-4C56-97E6-799921609FD6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{148A7D06-9FCC-4087-8A54-DE2B0C7A92D7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{148A7D06-9FCC-4087-8A54-DE2B0C7A92D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{148A7D06-9FCC-4087-8A54-DE2B0C7A92D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{148A7D06-9FCC-4087-8A54-DE2B0C7A92D7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E95003CD-3382-45EE-9301-EA3529A278C1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E95003CD-3382-45EE-9301-EA3529A278C1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E95003CD-3382-45EE-9301-EA3529A278C1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E95003CD-3382-45EE-9301-EA3529A278C1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8132A764-7BF9-402B-A410-B8F9FC001801}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8132A764-7BF9-402B-A410-B8F9FC001801}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8132A764-7BF9-402B-A410-B8F9FC001801}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8132A764-7BF9-402B-A410-B8F9FC001801}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{3266D2D0-16FC-4C52-8C1E-31706CA234B2} = {3FD0185E-BE2F-4BA0-8F1B-15043E08B6F7}
+		{EE518FD7-5FF0-4C56-97E6-799921609FD6} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
+		{148A7D06-9FCC-4087-8A54-DE2B0C7A92D7} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
+		{E95003CD-3382-45EE-9301-EA3529A278C1} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
+		{8132A764-7BF9-402B-A410-B8F9FC001801} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {39690F49-F3CA-44D3-8831-7E12F4C490BB}
+	EndGlobalSection
+EndGlobal
