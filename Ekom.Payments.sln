@@ -23,6 +23,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Vettvangur.ValitorPay", "Pa
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ekom.Payments.Netgiro", "PaymentProviders\Ekom.Payments.Netgiro\Ekom.Payments.Netgiro.csproj", "{9BE278FA-8BF0-45C1-9C6C-055F0DABB4F8}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ekom.Payments.Borgun", "PaymentProviders\Ekom.Payments.Borgun\Ekom.Payments.Borgun.csproj", "{90180259-A918-400F-8216-EF0FD6EE31A0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -61,6 +63,10 @@ Global
 		{9BE278FA-8BF0-45C1-9C6C-055F0DABB4F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9BE278FA-8BF0-45C1-9C6C-055F0DABB4F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9BE278FA-8BF0-45C1-9C6C-055F0DABB4F8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{90180259-A918-400F-8216-EF0FD6EE31A0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{90180259-A918-400F-8216-EF0FD6EE31A0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{90180259-A918-400F-8216-EF0FD6EE31A0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{90180259-A918-400F-8216-EF0FD6EE31A0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -72,6 +78,7 @@ Global
 		{E95003CD-3382-45EE-9301-EA3529A278C1} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
 		{8132A764-7BF9-402B-A410-B8F9FC001801} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
 		{9BE278FA-8BF0-45C1-9C6C-055F0DABB4F8} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
+		{90180259-A918-400F-8216-EF0FD6EE31A0} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {39690F49-F3CA-44D3-8831-7E12F4C490BB}

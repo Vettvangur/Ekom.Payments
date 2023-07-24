@@ -11,15 +11,15 @@ using System.Globalization;
 using System.Net;
 using System.Threading.Tasks;
 
-namespace Ekom.Payments.Netgiro;
+namespace Ekom.Payments.Borgun;
 
 /// <summary>
-/// Receives a callback from Netgiroer completes payment.
+/// Receives a callback from Borgun when customer completes payment.
 /// Changes order status and optionally runs a custom callback provided by the application consuming this library.
 /// </summary>
 [Route("ekom/payments/[controller]")]
 [ApiController]
-public class NetgiroResponseController : ControllerBase
+public class BorgunResponseController : ControllerBase
 {
     readonly ILogger _logger;
     readonly PaymentsConfiguration _settings;
@@ -30,8 +30,8 @@ public class NetgiroResponseController : ControllerBase
     /// <summary>
     /// ctor
     /// </summary>
-    public NetgiroResponseController(
-        ILogger<NetgiroResponseController> logger,
+    public BorgunResponseController(
+        ILogger<BorgunResponseController> logger,
         PaymentsConfiguration settings,
         IOrderService orderService,
         IDatabaseFactory dbFac,
@@ -45,59 +45,62 @@ public class NetgiroResponseController : ControllerBase
     }
 
     /// <summary>
-    /// Receives a callback from Netgiro when customer completes payment.
+    /// Receives a callback from Borgun when customer completes payment.
     /// Changes order status and optionally runs a custom callback provided by the application consuming this library.
     /// </summary>
-    /// <param name="netgiroResponse">Netgiro querystring parameters</param>
+    /// <param name="borgunResponse">Borgun querystring parameters</param>
     [ApiExplorerSettings(IgnoreApi = true)]
-    [HttpPost]
+    [HttpGet, HttpPost]
     [Route("")]
-    public async Task<IActionResult> Post([FromQuery] Response netgiroResponse)
+    public async Task<IActionResult> Post([FromQuery] Response borgunResponse)
     {
-        _logger.LogInformation("Netgiro Payment Response - Start");
+        _logger.LogInformation("Borgun Payment Response - Start");
 
-        _logger.LogDebug("{NetgiroResponse}", netgiroResponse);
+        _logger.LogDebug(JsonConvert.SerializeObject(borgunResponse));
 
         try
         {
-            _logger.LogDebug("Netgiro Payment Response - ModelState.IsValid");
+            _logger.LogDebug("Borgun Payment Response - ModelState.IsValid");
 
-            if (netgiroResponse.ReferenceNumber == Guid.Empty)
+            if (!Guid.TryParse(borgunResponse.OrderId, out var orderId))
             {
                 return BadRequest();
             }
 
-            _logger.LogInformation("Netgiro Payment Response - ReferenceNumber: " + netgiroResponse.ReferenceNumber);
+            _logger.LogInformation("Borgun Payment Response - {OrderID}", orderId);
 
-            OrderStatus? order = await _orderService.GetAsync(netgiroResponse.ReferenceNumber);
+            OrderStatus? order = await _orderService.GetAsync(orderId);
             if (order == null)
             {
-                _logger.LogWarning("Netgiro Payment Response - Unable to find order {ReferenceNumber}", netgiroResponse.ReferenceNumber);
+                _logger.LogWarning("Borgun Payment Response - Unable to find order {OrderId}", orderId);
 
                 return NotFound();
             }
 
             if (order.Paid)
             {
-                _logger.LogInformation("Netgiro Payment Response - Already Paid");
+                _logger.LogInformation("Borgun Payment Response - Already Paid");
                 return Ok();
             }
 
             var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
-            var netgiroSettings = JsonConvert.DeserializeObject<NetgiroSettings>(order.EkomPaymentProviderData);
+            var borgunSettings = JsonConvert.DeserializeObject<BorgunSettings>(order.EkomPaymentProviderData);
 
             var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
 
-            var sig = CryptoHelpers.GetSHA256HexStringSum(
-                Payment.CombineSignature(
-                    netgiroSettings.Secret,
-                    netgiroResponse.ReferenceNumber.ToString(),
-                    netgiroResponse.ConfirmationCode,
-                    netgiroResponse.InvoiceNumber));
+            string orderAmount = order.Amount.ToString("#.00", currencyFormat);
 
-            if (sig.Equals(netgiroResponse.Signature, StringComparison.InvariantCultureIgnoreCase))
+            string orderhashcheck = CryptoHelpers.GetHMACSHA256(borgunSettings.SecretCode,
+                new CheckHashMessage(borgunResponse.OrderId, orderAmount, paymentSettings.Currency).Message);
+
+            _logger.LogInformation(
+                "Borgun Payment Response - Validating orderid: {OrderId} and amount: {OrderAmount}",
+                orderId,
+                orderAmount);
+
+            if (string.Compare(borgunResponse.OrderHash, orderhashcheck, true) == 0)
             {
-                _logger.LogInformation("Netgiro Payment Response Hit - PaymentSuccessful");
+                _logger.LogInformation("Borgun Payment Response - OrderHash Validation Success");
 
                 try
                 {
@@ -105,8 +108,9 @@ public class NetgiroResponseController : ControllerBase
                     {
                         Id = order.UniqueId,
                         Date = DateTime.Now,
-                        CustomData = netgiroResponse.InvoiceNumber,
-                        Amount = order.Amount.ToString(currencyFormat),
+                        CustomData = borgunResponse.AuthorizationCode,
+                        CardNumber = borgunResponse.CreditCardNumber,
+                        Amount = order.Amount.ToString(),
                     };
 
                     using var db = _dbFac.GetDatabase();
@@ -118,7 +122,7 @@ public class NetgiroResponseController : ControllerBase
 #pragma warning disable CA1031 // We could be more exact in the sql issues we might face but this will do
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Netgiro Payment Response - Error saving payment data");
+                    _logger.LogError(ex, "Borgun Payment Response - Error saving payment data");
                 }
 #pragma warning restore CA1031 // Do not catch general exception types
 
@@ -134,26 +138,27 @@ public class NetgiroResponseController : ControllerBase
                     OrderStatus = order,
                 });
 
-                _logger.LogInformation("Netgiro Payment Response - SUCCESS");
+                _logger.LogInformation("Borgun Payment Response - SUCCESS");
                 return Ok();
             }
             else
             {
+                _logger.LogError(
+                    "Borgun Payment Response - Failed hash verification: {ReceivedOrderHash} {ComputedOrderhash}",
+                    borgunResponse.OrderHash,
+                    orderhashcheck
+                );
                 Events.OnError(this, new ErrorEventArgs
                 {
                     OrderStatus = order,
                 });
-                _logger.LogError(
-                    "Netgiro Payment Response - Failed verification for {ReferenceNumber}",
-                    netgiroResponse.ReferenceNumber
-                );
 
                 return BadRequest();
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Netgiro Payment Response - Failed");
+            _logger.LogError(ex, "Borgun Payment Response - Failed");
             Events.OnError(this, new ErrorEventArgs
             {
                 Exception = ex,
@@ -163,8 +168,8 @@ public class NetgiroResponseController : ControllerBase
             {
                 await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
                 {
-                    Subject = "Netgiro Payment Response - Failed",
-                    Body = $"<p>Netgiro Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString(),
+                    Subject = "Borgun Payment Response - Failed",
+                    Body = $"<p>Borgun Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString(),
                     IsBodyHtml = true,
                 });
             }

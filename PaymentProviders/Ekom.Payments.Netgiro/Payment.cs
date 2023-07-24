@@ -25,6 +25,7 @@ class Payment : IPaymentProvider
     /// </summary>
     const string reportPath = "/ekom/payments/NetgiroResponse";
 
+
     readonly ILogger<Payment> _logger;
     readonly PaymentsConfiguration _settings;
     readonly IUmbracoService _uService;
@@ -62,44 +63,48 @@ class Payment : IPaymentProvider
         if (string.IsNullOrEmpty(paymentSettings.Language))
             throw new ArgumentException(nameof(paymentSettings.Language));
 
-        _logger.LogInformation("Netgiro Payment Request - Start");
+        paymentSettings.Currency ??= "ISK";
 
-        var netgiroSettings = paymentSettings.CustomSettings.ContainsKey(typeof(NetgiroSettings))
-            ? (paymentSettings.CustomSettings[typeof(NetgiroSettings)] as NetgiroSettings)!
-            : new NetgiroSettings();
+        try
+        {
+            _logger.LogInformation("Netgiro Payment Request - Start");
 
-        _uService.PopulatePaymentProviderProperties(
-            paymentSettings,
-            _ppNodeName,
-            netgiroSettings,
-            NetgiroSettings.Properties);
+            var netgiroSettings = paymentSettings.CustomSettings.ContainsKey(typeof(NetgiroSettings))
+                ? (paymentSettings.CustomSettings[typeof(NetgiroSettings)] as NetgiroSettings)!
+                : new NetgiroSettings();
 
-        var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
+            _uService.PopulatePaymentProviderProperties(
+                paymentSettings,
+                _ppNodeName,
+                netgiroSettings,
+                NetgiroSettings.Properties);
 
-        // Persist in database and retrieve unique order id
-        var orderStatus = await _orderService.InsertAsync(
-            total,
-            paymentSettings,
-            netgiroSettings,
-            null,
-            _httpCtx
-        ).ConfigureAwait(false);
+            var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
 
-        // This example shows how to construct a success url / receipt page destination
-        // adding the reference querystring allows for easy retrieval of order using the order helper on the success/receipt page
-        paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-        paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
+            // Persist in database and retrieve unique order id
+            var orderStatus = await _orderService.InsertAsync(
+                total,
+                paymentSettings,
+                netgiroSettings,
+                null,
+                _httpCtx
+            ).ConfigureAwait(false);
 
-        paymentSettings.CancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
-        paymentSettings.CancelUrl = PaymentsUriHelper.AddQueryString(paymentSettings.CancelUrl, "?reference=" + orderStatus.UniqueId);
+            // This example shows how to construct a success url / receipt page destination
+            // adding the reference querystring allows for easy retrieval of order using the order helper on the success/receipt page
+            paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
+            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
 
-        var reportUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
+            paymentSettings.CancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
+            paymentSettings.CancelUrl = PaymentsUriHelper.AddQueryString(paymentSettings.CancelUrl, "?reference=" + orderStatus.UniqueId);
+
+            var reportUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
 
 #pragma warning disable CA1305 // Specify IFormatProvider
-        var totalAmount = Math.Ceiling(total).ToString("F0");
+            var totalAmount = Math.Ceiling(total).ToString("F0");
 #pragma warning restore CA1305 // Specify IFormatProvider
-        // Begin populating form values to be submitted
-        var formValues = new Dictionary<string, string?>
+            // Begin populating form values to be submitted
+            var formValues = new Dictionary<string, string?>
             {
                 { "ApplicationID", netgiroSettings.ApplicationId.ToString() },
                 { "ConfirmationType", ((int)ConfirmationType.ServerCallback).ToString() },
@@ -111,41 +116,51 @@ class Payment : IPaymentProvider
                 { "TotalAmount",  totalAmount},
             };
 
-        if (netgiroSettings.iFrame.HasValue)
-        {
-            formValues.Add("iframe", netgiroSettings.iFrame.Value.ToString());
+            if (netgiroSettings.iFrame.HasValue)
+            {
+                formValues.Add("iframe", netgiroSettings.iFrame.Value.ToString());
+            }
+
+            var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
+
+            for (int lineNumber = 0, length = paymentSettings.Orders.Count(); lineNumber < length; lineNumber++)
+            {
+                var order = paymentSettings.Orders.ElementAt(lineNumber);
+
+                formValues.Add($"Items[{lineNumber}].Name", order.Title);
+                formValues.Add($"Items[{lineNumber}].Quantity", order.Quantity.ToString("F0"));
+                formValues.Add($"Items[{lineNumber}].UnitPrice", order.Price.ToString("F0", currencyFormat));
+                formValues.Add($"Items[{lineNumber}].Amount", order.GrandTotal.ToString("F0", currencyFormat));
+            }
+
+            // Netgiro only supports specific types of order id's
+            var borgunOrderId = orderStatus.UniqueId.ToString().Split('-').Last();
+
+            var sig = CryptoHelpers.GetSHA256HexStringSum(
+                CombineSignature(
+                    netgiroSettings.Secret,
+                    orderStatus.UniqueId.ToString(),
+                    totalAmount,
+                    netgiroSettings.ApplicationId.ToString()));
+            formValues.Add("Signature", sig);
+            formValues.Add("ReferenceNumber", orderStatus.UniqueId.ToString());
+
+            _logger.LogInformation(
+                "Netgiro Payment Request - Amount: {Total} OrderId: {OrderUniqueId}",
+                total,
+                orderStatus.UniqueId);
+
+            return FormHelper.CreateRequest(formValues, netgiroSettings.PaymentPageUrl.ToString());
         }
-
-        NumberFormatInfo currencyFormat = new CultureInfo("is-IS", false).NumberFormat;
-
-        for (int lineNumber = 0, length = paymentSettings.Orders.Count(); lineNumber < length; lineNumber++)
+        catch (Exception ex)
         {
-            var order = paymentSettings.Orders.ElementAt(lineNumber);
-
-            formValues.Add($"Items[{lineNumber}].Name", order.Title);
-            formValues.Add($"Items[{lineNumber}].Quantity", order.Quantity.ToString("F0"));
-            formValues.Add($"Items[{lineNumber}].UnitPrice", order.Price.ToString("F0", currencyFormat));
-            formValues.Add($"Items[{lineNumber}].Amount", order.GrandTotal.ToString("F0", currencyFormat));
+            _logger.LogError(ex, "AsynchronousExample Payment Request - Payment Request Failed");
+            Events.OnError(this, new ErrorEventArgs
+            {
+                Exception = ex,
+            });
+            throw;
         }
-
-        // Netgiro only supports specific types of order id's
-        var borgunOrderId = orderStatus.UniqueId.ToString().Split('-').Last();
-
-        var sig = CryptoHelpers.GetSHA256HexStringSum(
-            CombineSignature(
-                netgiroSettings.Secret,
-                orderStatus.UniqueId.ToString(),
-                totalAmount,
-                netgiroSettings.ApplicationId.ToString()));
-        formValues.Add("Signature", sig);
-        formValues.Add("ReferenceNumber", orderStatus.UniqueId.ToString());
-
-        _logger.LogInformation(
-            "Netgiro Payment Request - Amount: {Total} OrderId: {OrderUniqueId}",
-            total,
-            orderStatus.UniqueId);
-
-        return FormHelper.CreateRequest(formValues, netgiroSettings.PaymentPageUrl.ToString());
     }
 
     internal static string CombineSignature(params string[] args)

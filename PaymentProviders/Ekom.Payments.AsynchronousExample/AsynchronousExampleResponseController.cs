@@ -57,113 +57,107 @@ public class AsynchronousExampleResponseController : ControllerBase
 
         _logger.LogDebug(JsonConvert.SerializeObject(AsynchronousExampleResp));
 
-        if (AsynchronousExampleResp != null && ModelState.IsValid)
+        try
         {
-            try
+            _logger.LogDebug("AsynchronousExample Payment Response - ModelState.IsValid");
+
+            if (!Guid.TryParse(AsynchronousExampleResp.ReferenceNumber, out var orderId))
             {
-                _logger.LogDebug("AsynchronousExample Payment Response - ModelState.IsValid");
+                return BadRequest();
+            }
 
-                if (!Guid.TryParse(AsynchronousExampleResp.ReferenceNumber, out var orderId))
+            _logger.LogInformation("AsynchronousExample Payment Response - {OrderID}", orderId);
+
+            OrderStatus? order = await _orderService.GetAsync(orderId);
+            if (order == null)
+            {
+                _logger.LogWarning("AsynchronousExample Payment Response - Unable to find order {OrderId}", orderId);
+
+                return NotFound();
+            }
+            var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
+            var AsynchronousExampleSettings = JsonConvert.DeserializeObject<AsynchronousExampleSettings>(order.EkomPaymentProviderData);
+
+            // perform payment provider specific security validation here
+            bool isValid = true;
+
+            if (isValid)
+            {
+                _logger.LogInformation("AsynchronousExample Payment Response - isValid");
+
+                if (!order.Paid)
                 {
-                    return BadRequest();
-                }
-
-                _logger.LogInformation("AsynchronousExample Payment Response - OrderID: " + orderId);
-
-                OrderStatus? order = await _orderService.GetAsync(orderId);
-                if (order == null)
-                {
-                    _logger.LogWarning("AsynchronousExample Payment Response - Unable to find order {OrderId}", orderId);
-
-                    return NotFound();
-                }
-                var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
-                var AsynchronousExampleSettings = JsonConvert.DeserializeObject<AsynchronousExampleSettings>(order.EkomPaymentProviderData);
-
-                // perform payment provider specific security validation here
-                bool isValid = true;
-
-                if (isValid)
-                {
-                    _logger.LogInformation("AsynchronousExample Payment Response - isValid");
-
-                    if (!order.Paid)
+                    try
                     {
-                        try
+                        var paymentData = new PaymentData
                         {
-                            var paymentData = new PaymentData
-                            {
-                                Id = order.UniqueId,
-                                Date = DateTime.Now,
-                                CardNumber = AsynchronousExampleResp.CardNumberMasked,
-                                CustomData = JsonConvert.SerializeObject(AsynchronousExampleResp),
-                                Amount = order.Amount.ToString(),
-                            };
+                            Id = order.UniqueId,
+                            Date = DateTime.Now,
+                            CardNumber = AsynchronousExampleResp.CardNumberMasked,
+                            CustomData = JsonConvert.SerializeObject(AsynchronousExampleResp),
+                            Amount = order.Amount.ToString(),
+                        };
 
-                            using var db = _dbFac.GetDatabase();
-                            await db.InsertOrReplaceAsync(paymentData);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "AsynchronousExample Payment Response - Error saving payment data");
-                        }
-
-                        order.Paid = true;
-
-                        using (var db = _dbFac.GetDatabase())
-                        {
-                            await db.UpdateAsync(order);
-                        }
-
-                        Events.OnSuccess(this, new SuccessEventArgs
-                        {
-                            OrderStatus = order,
-                        });
-                        _logger.LogInformation($"AsynchronousExample Payment Response - SUCCESS - Order ID: {order.UniqueId}");
+                        using var db = _dbFac.GetDatabase();
+                        await db.InsertOrReplaceAsync(paymentData);
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        _logger.LogInformation($"AsynchronousExample Payment Response - SUCCESS - Previously validated");
+                        _logger.LogError(ex, "AsynchronousExample Payment Response - Error saving payment data");
                     }
 
-                    var successUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl.ToString(), Request);
-                    return Redirect(successUrl.ToString());
-                }
-                else
-                {
-                    _logger.LogInformation($"AsynchronousExample Payment Response - Verification Error - Order ID: {order.UniqueId}");
-                    Events.OnError(this, new ErrorEventArgs
+                    order.Paid = true;
+
+                    using (var db = _dbFac.GetDatabase())
+                    {
+                        await db.UpdateAsync(order);
+                    }
+
+                    Events.OnSuccess(this, new SuccessEventArgs
                     {
                         OrderStatus = order,
                     });
-
-                    var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl.ToString(), Request);
-                    return Redirect(cancelUrl.ToString());
+                    _logger.LogInformation($"AsynchronousExample Payment Response - SUCCESS - Order ID: {order.UniqueId}");
                 }
+                else
+                {
+                    _logger.LogInformation($"AsynchronousExample Payment Response - SUCCESS - Previously validated");
+                }
+
+                var successUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl.ToString(), Request);
+                return Redirect(successUrl.ToString());
             }
-            catch (Exception ex)
+            else
             {
-                _logger.LogError(ex, "AsynchronousExample Payment Response - Failed");
+                _logger.LogInformation($"AsynchronousExample Payment Response - Verification Error - Order ID: {order.UniqueId}");
                 Events.OnError(this, new ErrorEventArgs
                 {
-                    Exception = ex,
+                    OrderStatus = order,
                 });
 
-                if (_settings.SendEmailAlerts)
-                {
-                    await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
-                    {
-                        Subject = "AsynchronousExample Payment Response - Failed",
-                        Body = $"<p>AsynchronousExample Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString(),
-                        IsBodyHtml = true,
-                    });
-                }
-
-                throw;
+                var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl.ToString(), Request);
+                return Redirect(cancelUrl.ToString());
             }
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AsynchronousExample Payment Response - Failed");
+            Events.OnError(this, new ErrorEventArgs
+            {
+                Exception = ex,
+            });
 
-        _logger.LogDebug(JsonConvert.SerializeObject(ModelState));
-        return Redirect("/");
+            if (_settings.SendEmailAlerts)
+            {
+                await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
+                {
+                    Subject = "AsynchronousExample Payment Response - Failed",
+                    Body = $"<p>AsynchronousExample Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString(),
+                    IsBodyHtml = true,
+                });
+            }
+
+            throw;
+        }
     }
 }

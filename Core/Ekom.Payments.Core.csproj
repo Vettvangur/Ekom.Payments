@@ -50,7 +50,13 @@
 
     <ItemGroup>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>DynamicProxyGenAssembly2</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Ekom.Payments.AspNetCore</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Ekom.Payments.AsynchronousExample</_Parameter1>
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Ekom.Payments.U10</_Parameter1>
@@ -65,25 +71,7 @@
             <_Parameter1>Ekom.Payments.BorgunLoans</_Parameter1>
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>DynamicProxyGenAssembly2</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.Netgiro</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.PayPal</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.Valitor</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.ValitorPay</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.SiminnPay</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.Tests</_Parameter1>
+            <_Parameter1>Ekom.Payments.BorgunRpg</_Parameter1>
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Ekom.Payments.Netgiro</_Parameter1>
@@ -92,16 +80,25 @@
             <_Parameter1>Ekom.Payments.NetgiroApi</_Parameter1>
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Ekom.Payments.PayPal</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Ekom.Payments.Pei</_Parameter1>
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.BorgunRpg</_Parameter1>
+            <_Parameter1>Ekom.Payments.SiminnPay</_Parameter1>
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Ekom.Payments.Stripe</_Parameter1>
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.AsynchronousExample</_Parameter1>
+            <_Parameter1>Ekom.Payments.Valitor</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Ekom.Payments.ValitorPay</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Ekom.Payments.Tests</_Parameter1>
         </AssemblyAttribute>
     </ItemGroup>
 

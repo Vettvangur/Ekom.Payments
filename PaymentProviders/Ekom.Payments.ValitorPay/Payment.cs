@@ -72,83 +72,95 @@ class Payment : IPaymentProvider
         if (string.IsNullOrEmpty(paymentSettings.Store))
             throw new ArgumentException(nameof(paymentSettings.Store));
 
-        _logger.LogInformation("ValitorPay Payment Request - Start");
-
-        var valitorPaySettings = paymentSettings.CustomSettings.ContainsKey(typeof(ValitorPaySettings))
-            ? paymentSettings.CustomSettings[typeof(ValitorPaySettings)] as ValitorPaySettings
-            : new ValitorPaySettings();
-
-        _uService.PopulatePaymentProviderProperties(
-            paymentSettings,
-            _ppNodeName,
-            valitorPaySettings,
-            ValitorPaySettings.Properties);
-
-        var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
-
-        // Persist in database and retrieve unique order id
-        var orderStatus = await _orderService.InsertAsync(
-            total,
-            paymentSettings,
-            valitorPaySettings,
-            null,
-            _httpCtx
-        ).ConfigureAwait(false);
-
-        paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-        paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
-        paymentSettings.CancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
-        paymentSettings.CancelUrl = PaymentsUriHelper.AddQueryString(paymentSettings.CancelUrl, "?reference=" + orderStatus.UniqueId);
-        paymentSettings.ErrorUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.ErrorUrl, _httpCtx.Request);
-        paymentSettings.ErrorUrl = PaymentsUriHelper.AddQueryString(paymentSettings.ErrorUrl, "?reference=" + orderStatus.UniqueId);
-
-        _logger.LogInformation("ValitorPay Payment Request - Amount: " + total + " OrderId: " + orderStatus.UniqueId);
-
-        if (string.IsNullOrEmpty(paymentSettings.VirtualCardNumber) && orderStatus.Member.HasValue)
+        try
         {
-            var vCard = await _virtualCardService.GetMemberDefaultCardAsync(orderStatus.Member.Value);
+            _logger.LogInformation("ValitorPay Payment Request - Start");
 
-            paymentSettings.VirtualCardNumber = vCard?.VirtualCardGuid.ToString();
-        }
+            var valitorPaySettings = paymentSettings.CustomSettings.ContainsKey(typeof(ValitorPaySettings))
+                ? paymentSettings.CustomSettings[typeof(ValitorPaySettings)] as ValitorPaySettings
+                : new ValitorPaySettings();
 
-        if (string.IsNullOrEmpty(paymentSettings.VirtualCardNumber))
-        {
-            var reportUrl = PaymentsUriHelper.EnsureFullUri(
-            new Uri(initialPaymentReportPath, UriKind.Relative),
-            _httpCtx.Request);
+            _uService.PopulatePaymentProviderProperties(
+                paymentSettings,
+                _ppNodeName,
+                valitorPaySettings,
+                ValitorPaySettings.Properties);
 
-            var retVal = await InitialCardUsageAsync(
+            var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
+
+            // Persist in database and retrieve unique order id
+            var orderStatus = await _orderService.InsertAsync(
+                total,
                 paymentSettings,
                 valitorPaySettings,
-                orderStatus,
-                total,
-                reportUrl);
+                null,
+                _httpCtx
+            ).ConfigureAwait(false);
 
-            if (!string.IsNullOrEmpty(retVal))
+            paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
+            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
+            paymentSettings.CancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
+            paymentSettings.CancelUrl = PaymentsUriHelper.AddQueryString(paymentSettings.CancelUrl, "?reference=" + orderStatus.UniqueId);
+            paymentSettings.ErrorUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.ErrorUrl, _httpCtx.Request);
+            paymentSettings.ErrorUrl = PaymentsUriHelper.AddQueryString(paymentSettings.ErrorUrl, "?reference=" + orderStatus.UniqueId);
+
+            _logger.LogInformation("ValitorPay Payment Request - Amount: " + total + " OrderId: " + orderStatus.UniqueId);
+
+            if (string.IsNullOrEmpty(paymentSettings.VirtualCardNumber) && orderStatus.Member.HasValue)
             {
-                return retVal;
+                var vCard = await _virtualCardService.GetMemberDefaultCardAsync(orderStatus.Member.Value);
+
+                paymentSettings.VirtualCardNumber = vCard?.VirtualCardGuid.ToString();
             }
-        }
-        else
-        {
-            var reportUrl = PaymentsUriHelper.EnsureFullUri(
-                new Uri(virtualCardReportPath, UriKind.Relative),
+
+            if (string.IsNullOrEmpty(paymentSettings.VirtualCardNumber))
+            {
+                var reportUrl = PaymentsUriHelper.EnsureFullUri(
+                new Uri(initialPaymentReportPath, UriKind.Relative),
                 _httpCtx.Request);
 
-            var retVal = await SubsequentVirtualCardPayments(
-                paymentSettings,
-                valitorPaySettings,
-                orderStatus,
-                total,
-                reportUrl);
+                var retVal = await InitialCardUsageAsync(
+                    paymentSettings,
+                    valitorPaySettings,
+                    orderStatus,
+                    total,
+                    reportUrl);
 
-            if (!string.IsNullOrEmpty(retVal))
-            {
-                return retVal;
+                if (!string.IsNullOrEmpty(retVal))
+                {
+                    return retVal;
+                }
             }
-        }
+            else
+            {
+                var reportUrl = PaymentsUriHelper.EnsureFullUri(
+                    new Uri(virtualCardReportPath, UriKind.Relative),
+                    _httpCtx.Request);
 
-        return paymentSettings.ErrorUrl.ToString();
+                var retVal = await SubsequentVirtualCardPayments(
+                    paymentSettings,
+                    valitorPaySettings,
+                    orderStatus,
+                    total,
+                    reportUrl);
+
+                if (!string.IsNullOrEmpty(retVal))
+                {
+                    return retVal;
+                }
+            }
+
+            return paymentSettings.ErrorUrl.ToString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AsynchronousExample Payment Request - Payment Request Failed");
+            Events.OnError(this, new ErrorEventArgs
+            {
+                Exception = ex,
+            });
+            throw;
+        }
     }
 
     private async Task<string> InitialCardUsageAsync(
