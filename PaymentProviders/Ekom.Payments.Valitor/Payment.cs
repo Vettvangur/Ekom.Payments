@@ -62,52 +62,50 @@ class Payment : IPaymentProvider
         if (string.IsNullOrEmpty(paymentSettings.Language))
             throw new ArgumentException(nameof(paymentSettings.Language));
 
-        try
+        _logger.LogInformation("Valitor Payment Request - Start");
+
+        var valitorSettings = paymentSettings.CustomSettings.ContainsKey(typeof(ValitorSettings))
+            ? paymentSettings.CustomSettings[typeof(ValitorSettings)] as ValitorSettings
+            : new ValitorSettings();
+
+        _uService.PopulatePaymentProviderProperties(
+            paymentSettings,
+            _ppNodeName,
+            valitorSettings,
+            ValitorSettings.Properties);
+
+        var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
+        if (valitorSettings.LoanType != 0 && total < 30000)
         {
-            _logger.LogInformation("Valitor Payment Request - Start");
+            throw new ValitorAHKException("Requested loan amount will likely not meet icelandic ÁHK requirements");
+        }
 
-            var valitorSettings = paymentSettings.CustomSettings.ContainsKey(typeof(ValitorSettings))
-                ? paymentSettings.CustomSettings[typeof(ValitorSettings)] as ValitorSettings
-                : new ValitorSettings();
+        if (valitorSettings.LoanType != 0 && string.IsNullOrEmpty(valitorSettings.MerchantName))
+        {
+            throw new NotSupportedException(
+                "Valitor Loans require MerchantName parameter");
+        }
 
-            _uService.PopulatePaymentProviderProperties(
-                paymentSettings,
-                _ppNodeName,
-                valitorSettings,
-                ValitorSettings.Properties);
-            
-            var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
-            if (valitorSettings.LoanType != 0 && total < 30000)
-            {
-                throw new ValitorAHKException("Requested loan amount will likely not meet icelandic ÁHK requirements");
-            }
+        var sb = new StringBuilder(valitorSettings.VerificationCode);
+        sb.Append("0");
 
-            if (valitorSettings.LoanType != 0 && string.IsNullOrEmpty(valitorSettings.MerchantName))
-            {
-                throw new NotSupportedException(
-                    "Valitor Loans require MerchantName parameter");
-            }
+        // Persist in database and retrieve unique order id
+        var orderStatus = await _orderService.InsertAsync(
+            total,
+            paymentSettings,
+            valitorSettings,
+            null,
+            _httpCtx
+        ).ConfigureAwait(false);
 
-            var sb = new StringBuilder(valitorSettings.VerificationCode);
-            sb.Append("0");
+        paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
+        paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
 
-            // Persist in database and retrieve unique order id
-            var orderStatus  = await _orderService.InsertAsync(
-                total,
-                paymentSettings,
-                valitorSettings,
-                null,
-                _httpCtx
-            ).ConfigureAwait(false);
+        var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
+        var reportUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
 
-            paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
-
-            var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
-            var reportUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
-
-            // Begin populating form values to be submitted
-            var formValues = new Dictionary<string, string?>
+        // Begin populating form values to be submitted
+        var formValues = new Dictionary<string, string?>
             {
                 { "MerchantID", valitorSettings.MerchantId },
                 { "AuthorizationOnly", "0" },
@@ -118,86 +116,80 @@ class Payment : IPaymentProvider
                 { "Language", ParseSupportedLanguages(paymentSettings.Language) },
 
                 { "PaymentSuccessfulURL", paymentSettings.SuccessUrl.ToString() },
-                { "PaymentSuccessfulURLText", /*valitorSettings.SkipReceipt*/ true 
-                    ? "-" : 
-                    valitorSettings.PaymentSuccessfulURLText 
+                { "PaymentSuccessfulURLText", /*valitorSettings.SkipReceipt*/ true
+                    ? "-" :
+                    valitorSettings.PaymentSuccessfulURLText
                 },
-                { "PaymentSuccessfulAutomaticRedirect", /*valitorSettings.SkipReceipt*/ true 
-                    ? "1" 
-                    : "0" 
+                { "PaymentSuccessfulAutomaticRedirect", /*valitorSettings.SkipReceipt*/ true
+                    ? "1"
+                    : "0"
                 },
                 { "PaymentCancelledURL", cancelUrl.ToString() },
 
                 { "PaymentSuccessfulServerSideURL", reportUrl.ToString() },
             };
 
-            if (valitorSettings.SessionExpiredTimeoutInSeconds != 0
-            && valitorSettings.SessionExpiredRedirectURL != null)
-            {
-                formValues.Add("SessionExpiredTimeoutInSeconds", valitorSettings.SessionExpiredTimeoutInSeconds.ToString());
-                formValues.Add("SessionExpiredRedirectURL", valitorSettings.SessionExpiredRedirectURL.ToString());
-            }
-            else if (valitorSettings.SessionExpiredTimeoutInSeconds != 0)
-            {
-                _logger.LogError("Requested session expired timeout but could not find redirect url, please configure payment provider with 'timeoutRedirectURL' property");
-            }
-
-            for (int x = 0, length = paymentSettings.Orders.Count(); x < length; x++)
-            {
-                var order = paymentSettings.Orders.ElementAt(x);
-
-                var lineNumber = x + 1;
-
-                formValues.Add($"Product_{lineNumber}_Description",
-                    HttpUtility.UrlEncode(order.Title, Encoding.GetEncoding("ISO-8859-1")));
-                formValues.Add($"Product_{lineNumber}_Quantity", order.Quantity.ToString());
-                formValues.Add($"Product_{lineNumber}_Price",  ((int)order.Price).ToString());
-                formValues.Add($"Product_{lineNumber}_Discount", order.Discount.ToString());
-
-                sb.Append(order.Quantity.ToString());
-                sb.Append(((int)order.Price).ToString());
-                sb.Append(order.Discount.ToString());
-            }
-
-            sb.Append(valitorSettings.MerchantId);
-            sb.Append(orderStatus.UniqueId);
-            sb.Append(paymentSettings.SuccessUrl);
-            sb.Append(reportUrl);
-            sb.Append(paymentSettings.Currency);
-
-            if (valitorSettings.LoanType != LoanType.Disabled)
-            {
-                formValues.Add("IsCardLoan", "1");
-                formValues.Add("MerchantName", valitorSettings.MerchantName);
-
-                if (valitorSettings.LoanType == LoanType.IsLoan)
-                {
-                    formValues.Add("IsInterestFree", "0");
-                    sb.Append(0);
-                }
-                else if (valitorSettings.LoanType == LoanType.IsInterestFreeLoan)
-                {
-                    formValues.Add("IsInterestFree", "1");
-                    sb.Append(1);
-                }
-            }
-
-            formValues.Add("DigitalSignature", CryptoHelpers.GetSHA256HexStringSum(sb.ToString()));
-
-            _logger.LogInformation("Valitor Payment Request - Amount: " + total + " OrderId: " + orderStatus.UniqueId);
-
-            return FormHelper.CreateRequest(formValues, valitorSettings.PaymentPageUrl.ToString());
-        }
-        catch (Exception ex)
+        if (valitorSettings.SessionExpiredTimeoutInSeconds != 0
+        && valitorSettings.SessionExpiredRedirectURL != null)
         {
-            _logger.LogError(ex, "Valitor Payment Request - Payment Request Failed");
-            throw;
+            formValues.Add("SessionExpiredTimeoutInSeconds", valitorSettings.SessionExpiredTimeoutInSeconds.ToString());
+            formValues.Add("SessionExpiredRedirectURL", valitorSettings.SessionExpiredRedirectURL.ToString());
         }
+        else if (valitorSettings.SessionExpiredTimeoutInSeconds != 0)
+        {
+            _logger.LogError("Requested session expired timeout but could not find redirect url, please configure payment provider with 'timeoutRedirectURL' property");
+        }
+
+        for (int x = 0, length = paymentSettings.Orders.Count(); x < length; x++)
+        {
+            var order = paymentSettings.Orders.ElementAt(x);
+
+            var lineNumber = x + 1;
+
+            formValues.Add($"Product_{lineNumber}_Description",
+                HttpUtility.UrlEncode(order.Title, Encoding.GetEncoding("ISO-8859-1")));
+            formValues.Add($"Product_{lineNumber}_Quantity", order.Quantity.ToString());
+            formValues.Add($"Product_{lineNumber}_Price", ((int)order.Price).ToString());
+            formValues.Add($"Product_{lineNumber}_Discount", order.Discount.ToString());
+
+            sb.Append(order.Quantity.ToString());
+            sb.Append(((int)order.Price).ToString());
+            sb.Append(order.Discount.ToString());
+        }
+
+        sb.Append(valitorSettings.MerchantId);
+        sb.Append(orderStatus.UniqueId);
+        sb.Append(paymentSettings.SuccessUrl);
+        sb.Append(reportUrl);
+        sb.Append(paymentSettings.Currency);
+
+        if (valitorSettings.LoanType != LoanType.Disabled)
+        {
+            formValues.Add("IsCardLoan", "1");
+            formValues.Add("MerchantName", valitorSettings.MerchantName);
+
+            if (valitorSettings.LoanType == LoanType.IsLoan)
+            {
+                formValues.Add("IsInterestFree", "0");
+                sb.Append(0);
+            }
+            else if (valitorSettings.LoanType == LoanType.IsInterestFreeLoan)
+            {
+                formValues.Add("IsInterestFree", "1");
+                sb.Append(1);
+            }
+        }
+
+        formValues.Add("DigitalSignature", CryptoHelpers.GetSHA256HexStringSum(sb.ToString()));
+
+        _logger.LogInformation("Valitor Payment Request - Amount: " + total + " OrderId: " + orderStatus.UniqueId);
+
+        return FormHelper.CreateRequest(formValues, valitorSettings.PaymentPageUrl.ToString());
     }
 
     public string ParseSupportedLanguages(string language)
     {
-        var parsed 
+        var parsed
             = CultureInfo.GetCultureInfo(language).TwoLetterISOLanguageName.ToUpper();
 
         switch (parsed)
