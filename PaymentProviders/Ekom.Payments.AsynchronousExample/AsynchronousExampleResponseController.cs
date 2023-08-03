@@ -104,6 +104,18 @@ public class AsynchronousExampleResponseController : ControllerBase
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "AsynchronousExample Payment Response - Error saving payment data");
+
+                        if (_settings.SendEmailAlerts)
+                        {
+#pragma warning disable CA2000 // Handled by mail service
+                            await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
+                            {
+                                Subject = "AsynchronousExample Payment Response - Error saving payment data",
+                                Body = $"<p>AsynchronousExample Payment Response - Error saving payment data<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString(),
+                                IsBodyHtml = true,
+                            });
+#pragma warning restore CA2000 // Dispose objects before losing scope
+                        }
                     }
 
                     order.Paid = true;

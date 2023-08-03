@@ -43,6 +43,13 @@ public class PaymentSettings : PaymentSettingsBase<PaymentSettings>
     public string Currency { get; set; }
 
     /// <summary>
+    /// GM: 
+    /// PayPal ID or an email address associated with the store's PayPal account
+    /// </summary>
+    //[EkomProperty(PropertyEditorType.Store)]
+    //public string PayPalAccount { get; set; }
+
+    /// <summary>
     /// For Ekom properties, controls which key (Store/Language) we read properties from.
     /// Special case during population since properties marked with <see cref="EkomPropertyAttribute"/> depend on this value. <br />
     /// Although this property can itself contain an EkomProperty value on Umbraco payment provider nodes, 
