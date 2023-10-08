@@ -1,11 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Web;
 using Ekom.Payments.Exceptions;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Ekom.Payments;
 
@@ -75,11 +71,9 @@ public class EkomPayments
 
         string normalizedPPName = basePpName.ToLowerInvariant();
 
-        if (paymentProviders.ContainsKey(normalizedPPName))
+        if (paymentProviders.TryGetValue(normalizedPPName, out var provider))
         {
-            var ppType = paymentProviders[normalizedPPName];
-
-            var pp = ActivatorUtilities.CreateInstance(_serviceProvider, ppType) as IPaymentProvider;
+            var pp = ActivatorUtilities.CreateInstance(_serviceProvider, provider) as IPaymentProvider;
 
             return pp;
         }

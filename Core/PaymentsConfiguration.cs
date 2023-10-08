@@ -1,9 +1,3 @@
-using Microsoft.Extensions.Configuration;
-using System;
-using System.Configuration;
-using System.Globalization;
-using Ekom.Payments.Helpers;
-
 namespace Ekom.Payments;
 
 /// <summary>

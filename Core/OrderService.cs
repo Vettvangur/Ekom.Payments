@@ -1,11 +1,5 @@
-using System;
-using System.Text;
-using System.Threading.Tasks;
-using System.Web;
-using Ekom.Payments.Helpers;
-using Microsoft.AspNetCore.Http;
-using Azure.Core;
 using LinqToDB;
+using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 
 namespace Ekom.Payments;
@@ -47,12 +41,11 @@ class OrderService : IOrderService
     /// <param name="id">Order id</param>
     public async Task<OrderStatus?> GetAsync(Guid id)
     {
-        using (var db = _dbFac.GetDatabase())
-        {
-            return await db.OrderStatus
-                .Where(x => x.UniqueId == id)
-                .FirstOrDefaultAsync();
-        }
+        await using var db = _dbFac.GetDatabase();
+
+        return await db.OrderStatus
+            .Where(x => x.UniqueId == id)
+            .FirstOrDefaultAsync();
     }
 
     /// <summary>
@@ -85,20 +78,17 @@ class OrderService : IOrderService
             CustomData = netPaymentData
         };
 
-        using (var db = _dbFac.GetDatabase())
-        {
-            // Return order id
-            await db.InsertAsync(orderStatus).ConfigureAwait(false);
-        }
+        await using var db = _dbFac.GetDatabase();
+        // Return order id
+        await db.InsertAsync(orderStatus).ConfigureAwait(false);
 
         return orderStatus;
     }
 
     public async Task UpdateAsync(OrderStatus orderStatus)
     {
-        using (var db = _dbFac.GetDatabase())
-        {
-            await db.UpdateAsync(orderStatus).ConfigureAwait(false);
-        }
+        await using var db = _dbFac.GetDatabase();
+
+        await db.UpdateAsync(orderStatus).ConfigureAwait(false);
     }
 }

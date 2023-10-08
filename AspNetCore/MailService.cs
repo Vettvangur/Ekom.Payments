@@ -1,6 +1,6 @@
+using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Mail;
-using Microsoft.Extensions.Logging;
 
 namespace Ekom.Payments;
 
@@ -69,7 +69,7 @@ class MailService : IMailService
             $"{mailMessage.To.FirstOrDefault()?.Address ?? To} with subject {mailMessage.Subject}");
 
         // We do not catch the error here... let it pass direct to the caller
-        using (var smtp = new SmtpClient(_host, _port))
+        using var smtp = new SmtpClient(_host, _port);
         using (mailMessage)
         {
             smtp.Credentials = new NetworkCredential(_username, _password);
