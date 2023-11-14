@@ -127,21 +127,8 @@ class UmbracoService : IUmbracoService
             throw new NetPaymentException("Could not access the Umbraco helper");
         }
 
-        if (!_examineManager.TryGetIndex(UmbracoIndexes.ExternalIndexName, out var index))
-        {
-            throw new Exception("Could not access the Examine member searcher");
-        }
-
-        var searchResults = index
-            .Searcher
-            .CreateQuery("content")
-            .NativeQuery($"+__Key:\"{key}\"")
-            .Execute();
-
-        var result = searchResults.FirstOrDefault();
-        if (result == null) throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider node");
-
-        var ppNode = umbracoHelper.Content(result.Id);
+        var ppNode = umbracoHelper.Content(key);
+      
         if (ppNode == null) throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider node");
 
         return ppNode;
