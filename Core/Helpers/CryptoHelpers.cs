@@ -1,4 +1,3 @@
-using System;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -64,12 +63,11 @@ public static class CryptoHelpers
     public static string GetHMACSHA256(string secretcode, string message)
     {
         byte[] secretBytes = Encoding.UTF8.GetBytes(secretcode);
+        byte[] messageBytes = Encoding.UTF8.GetBytes(message);
 
-        using var hasher = new HMACSHA256(secretBytes);
-        byte[] result = hasher.ComputeHash(Encoding.UTF8.GetBytes(message));
-
-        string checkhash = BitConverter.ToString(result).Replace("-", "");
-
-        return checkhash;
+        using (var hasher = new HMACSHA256(secretBytes))
+        {
+            return BitConverter.ToString(hasher.ComputeHash(messageBytes)).Replace("-", "");
+        }
     }
 }

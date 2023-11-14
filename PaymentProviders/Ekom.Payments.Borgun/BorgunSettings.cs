@@ -30,4 +30,5 @@ public class BorgunSettings : PaymentSettingsBase<BorgunSettings>
 
     [EkomProperty(PropertyEditorType.Store)]
     public bool RequireCustomerInformation { get; set; }
+    public string Language { get; set; }
 }

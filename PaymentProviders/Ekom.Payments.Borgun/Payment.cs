@@ -1,16 +1,7 @@
-using Ekom.Payments;
 using Ekom.Payments.Helpers;
-using Ekom.Payments.Borgun;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Web;
 
 namespace Ekom.Payments.Borgun;
 
@@ -87,20 +78,20 @@ class Payment : IPaymentProvider
             var reportUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
             var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
 
+
             // Begin populating form values to be submitted
             var formValues = new Dictionary<string, string>
             {
                 { "merchantid", borgunSettings.MerchantId },
                 { "paymentgatewayid", borgunSettings.PaymentGatewayId.ToString() },
-
                 { "returnurlsuccess", paymentSettings.SuccessUrl.ToString() },
-                { "returnurlcancel", paymentSettings.CancelUrl.ToString() },
-                { "returnurlerror", paymentSettings.ErrorUrl.ToString() },
+                { "returnurlcancel", paymentSettings.CancelUrl.ToString() + "?paymentError=cancelPayment" },
+                { "returnurlerror", paymentSettings.ErrorUrl.ToString() + "?paymentError=errorPayment" },
                 { "returnurlsuccessserver", reportUrl.ToString() },
 
-                { "amount", total.ToString("#.00", currencyFormat) },
+                { "amount", total.ToString() + ",00" },
                 { "currency", paymentSettings.Currency },
-                { "language", paymentSettings.Language.ToUpper() }
+                { "language", paymentSettings.Language.ToUpper() == "IS-IS" ? "IS" : paymentSettings.Language.ToUpper() }
             };
 
             for (int lineNumber = 0, length = paymentSettings.Orders.Count(); lineNumber < length; lineNumber++)
@@ -109,14 +100,14 @@ class Payment : IPaymentProvider
 
                 formValues.Add("itemdescription_" + lineNumber, order.Title);
                 formValues.Add("itemcount_" + lineNumber, order.Quantity.ToString());
-                formValues.Add("itemunitamount_" + lineNumber, order.Price.ToString("#.00", currencyFormat));
-                formValues.Add("itemamount_" + lineNumber, order.GrandTotal.ToString("#.00", currencyFormat));
+                formValues.Add("itemunitamount_" + lineNumber, order.Price.ToString() + ",00");
+                formValues.Add("itemamount_" + lineNumber, order.GrandTotal.ToString() + ",00");
             }
 
-            if (borgunSettings.SkipReceipt)
-            {
+            //if (borgunSettings.SkipReceipt)
+            //{
                 formValues.Add("skipreceiptpage", "1");
-            }
+            //}
 
             if (!string.IsNullOrEmpty(borgunSettings.MerchantEmail))
             {
@@ -161,7 +152,7 @@ class Payment : IPaymentProvider
                     paymentSettings.SuccessUrl.ToString(),
                     reportUrl.ToString(),
                     borgunOrderId,
-                    total.ToString("#.00", currencyFormat),
+                    total.ToString() + ",00",
                     paymentSettings.Currency
                 ).Message
             );

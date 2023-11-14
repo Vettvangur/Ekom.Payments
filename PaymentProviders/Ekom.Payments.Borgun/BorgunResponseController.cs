@@ -1,4 +1,3 @@
-using Ekom.Payments;
 using Ekom.Payments.Helpers;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
@@ -6,10 +5,7 @@ using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using System;
 using System.Globalization;
-using System.Net;
-using System.Threading.Tasks;
 
 namespace Ekom.Payments.Borgun;
 
@@ -113,7 +109,7 @@ public class BorgunResponseController : ControllerBase
                         Amount = order.Amount.ToString(),
                     };
 
-                    using var db = _dbFac.GetDatabase();
+                    await using var db = _dbFac.GetDatabase();
                     await db.InsertOrReplaceAsync(paymentData);
                 }
                 // Intended to ward in case of breaking schema changes,
@@ -128,7 +124,7 @@ public class BorgunResponseController : ControllerBase
 
                 order.Paid = true;
 
-                using (var db = _dbFac.GetDatabase())
+                await using (var db = _dbFac.GetDatabase())
                 {
                     await db.UpdateAsync(order);
                 }
