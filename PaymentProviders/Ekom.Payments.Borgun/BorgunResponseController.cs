@@ -58,7 +58,8 @@ public class BorgunResponseController : ControllerBase
         {
             _logger.LogDebug("Borgun Payment Response - ModelState.IsValid");
 
-            if (!Guid.TryParse(borgunResponse.OrderId, out var orderId))
+
+            if (!Guid.TryParse(borgunResponse.Reference, out var orderId))
             {
                 return BadRequest();
             }
@@ -84,7 +85,7 @@ public class BorgunResponseController : ControllerBase
 
             var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
 
-            string orderAmount = order.Amount.ToString("#.00", currencyFormat);
+            string orderAmount = order.Amount + ",00";
 
             string orderhashcheck = CryptoHelpers.GetHMACSHA256(borgunSettings.SecretCode,
                 new CheckHashMessage(borgunResponse.OrderId, orderAmount, paymentSettings.Currency).Message);

@@ -1,29 +1,19 @@
 using Ekom.Payments.Exceptions;
-using Ekom.Payments;
+using Ekom.Payments.Helpers;
 using Examine;
-using Examine.Search;
-using Polly;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.NetworkInformation;
-using System.Text;
-using System.Threading.Tasks;
-using Umbraco.Cms.Core;
-using Umbraco.Cms.Core.Models.PublishedContent;
-using Umbraco.Cms.Web.Common;
-using Umbraco.Extensions;
-using static Umbraco.Cms.Core.Constants;
-using System.Reflection;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using Microsoft.AspNetCore.DataProtection.KeyManagement;
-using System.Linq.Expressions;
-using Org.BouncyCastle.Ocsp;
-using Ekom.Payments.Helpers;
-using Microsoft.AspNetCore.Http;
-using System.ComponentModel;
+using System.Reflection;
+using System.Text;
+using System.Text.RegularExpressions;
+using Umbraco.Cms.Core.Models.PublishedContent;
+using Umbraco.Cms.Core.Web;
+using Umbraco.Cms.Web.Common;
+using Umbraco.Extensions;
+using static Umbraco.Cms.Core.Collections.TopoGraph;
+using static Umbraco.Cms.Core.Constants;
 
 namespace Ekom.Payments.Umb;
 
@@ -34,11 +24,11 @@ class UmbracoService : IUmbracoService
     readonly IExamineManager _examineManager;
     readonly IUmbracoHelperAccessor _umbracoHelperAccessor;
     readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IUmbracoContextFactory _umbracoContextFactory;
 
     static MethodInfo publishedContentValueMethod = typeof(FriendlyPublishedContentExtensions)
-        .GetMethods()
-        .Where(x => x.Name == "Value" && x.IsGenericMethodDefinition)
-        .First()
+            .GetMethods()
+            .First(x => x.Name == "Value" && x.IsGenericMethodDefinition)
         ;
 
     public UmbracoService(
@@ -46,13 +36,14 @@ class UmbracoService : IUmbracoService
         IUmbracoHelperAccessor umbracoHelperAccessor,
         IConfiguration configuration,
         ILogger<UmbracoService> logger,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor, IUmbracoContextFactory umbracoContextFactory)
     {
         _examineManager = examineManager;
         _umbracoHelperAccessor = umbracoHelperAccessor;
         _configuration = configuration;
         _logger = logger;
         _httpContextAccessor = httpContextAccessor;
+        _umbracoContextFactory = umbracoContextFactory;
     }
 
     private ISearchResult? GetProviderContainer()
@@ -70,7 +61,7 @@ class UmbracoService : IUmbracoService
 
         if (searchResults?.Any() != true)
         {
-            throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider container node");
+            throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider container node : " + PaymentsConfiguration.ContainerDocumentTypeAlias);
         }
 
         return searchResults.First();
@@ -110,7 +101,7 @@ class UmbracoService : IUmbracoService
 
         var ppContainer = umbracoHelper.Content(container.Id);
 
-        if (ppContainer == null) throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider container node");
+        if (ppContainer == null) throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider container node: " + ppNodeName);
 
         var visibleChildren = ppContainer.Children.Where(x => x.IsVisible());
 
@@ -122,14 +113,11 @@ class UmbracoService : IUmbracoService
 
     private IPublishedContent GetPPNode(Guid key)
     {
-        if (!_umbracoHelperAccessor.TryGetUmbracoHelper(out var umbracoHelper))
-        {
-            throw new NetPaymentException("Could not access the Umbraco helper");
-        }
+        using var umbracoContextReference = _umbracoContextFactory.EnsureUmbracoContext();
+        
+        var ppNode = umbracoContextReference.UmbracoContext.Content.GetById(false, key);
 
-        var ppNode = umbracoHelper.Content(key);
-      
-        if (ppNode == null) throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider node");
+        if (ppNode == null) throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider node: " + key);
 
         return ppNode;
     }

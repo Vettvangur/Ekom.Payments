@@ -64,4 +64,9 @@
         <PackageReference Include="Umbraco.Cms.Web.BackOffice" Version="10.3.2" />
         <PackageReference Include="Umbraco.Cms.Web.Website" Version="10.3.2" />
     </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\AspNetCore\Ekom.Payments.AspNetCore.csproj" />
+      <ProjectReference Include="..\..\Core\Ekom.Payments.Core.csproj" />
+    </ItemGroup>
 </Project>
