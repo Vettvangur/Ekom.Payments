@@ -48,7 +48,7 @@ public class BorgunResponseController : ControllerBase
     [ApiExplorerSettings(IgnoreApi = true)]
     [HttpGet, HttpPost]
     [Route("")]
-    public async Task<IActionResult> Post([FromQuery] Response borgunResponse)
+    public async Task<IActionResult> Post([FromForm] Response borgunResponse)
     {
         _logger.LogInformation("Borgun Payment Response - Start");
 
