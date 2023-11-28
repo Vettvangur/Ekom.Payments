@@ -253,7 +253,7 @@ class UmbracoService : IUmbracoService
         _logger.LogTrace("Populating property {PropertyName} on {SettingsType}", property.Name, o.GetType().Name);
 
         object val = property.GetValue(o);
-        if (property.PropertyType.IsValueType
+        if (val != null && property.PropertyType.IsValueType
             ? val.Equals(Activator.CreateInstance(property.PropertyType))
             : val == null)
         {

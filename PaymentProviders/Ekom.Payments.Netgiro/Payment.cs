@@ -116,10 +116,10 @@ class Payment : IPaymentProvider
                 { "TotalAmount",  totalAmount},
             };
 
-            if (netgiroSettings.iFrame.HasValue)
-            {
-                formValues.Add("iframe", netgiroSettings.iFrame.Value.ToString());
-            }
+            //if (netgiroSettings.iFrame.HasValue)
+            //{
+            //    formValues.Add("iframe", netgiroSettings.iFrame.Value.ToString());
+            //}
 
             var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
 
