@@ -2,13 +2,14 @@ namespace Ekom.Payments.Netgiro;
 
 public class NetgiroSettings : PaymentSettingsBase<NetgiroSettings>
 {
+    [EkomProperty(PropertyEditorType.Store)]
     public Guid ApplicationId { get; set; }
 
     [EkomProperty(PropertyEditorType.Store)]
     public string Secret { get; set; }
 
-    [EkomProperty(PropertyEditorType.Store)]
-    public bool? iFrame { get; set; }
+    //[EkomProperty(PropertyEditorType.Store)]
+    //public bool? iFrame { get; set; }
 
     /// <summary>
     /// Dev https://test.netgiro.is/securepay/
