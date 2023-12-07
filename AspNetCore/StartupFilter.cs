@@ -21,8 +21,15 @@ class EkomPaymentsStartupFilter : IStartupFilter
     {
         RegisterPaymentProviders();
         RegisterOrderRetrievers();
-        
-        _ensureTablesExist.Create();
+
+        try
+        {
+            _ensureTablesExist.Create();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create EkomPayments tables");
+        }
         
         next(app);
 

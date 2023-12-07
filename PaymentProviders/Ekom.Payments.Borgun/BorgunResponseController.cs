@@ -39,6 +39,10 @@ public class BorgunResponseController : ControllerBase
         _dbFac = dbFac;
         _mailSvc = mailSvc;
     }
+    private string FormatPrice(decimal price)
+    {
+        return price.ToString(CultureInfo.InvariantCulture).Replace(".0","", StringComparison.InvariantCulture) + ",00";
+    }
 
     /// <summary>
     /// Receives a callback from Borgun when customer completes payment.
@@ -85,7 +89,7 @@ public class BorgunResponseController : ControllerBase
 
             var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
 
-            string orderAmount = order.Amount + ",00";
+            string orderAmount = FormatPrice(order.Amount);
 
             string orderhashcheck = CryptoHelpers.GetHMACSHA256(borgunSettings.SecretCode,
                 new CheckHashMessage(borgunResponse.OrderId, orderAmount, paymentSettings.Currency).Message);

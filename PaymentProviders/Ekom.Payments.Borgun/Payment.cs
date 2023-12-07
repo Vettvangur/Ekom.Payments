@@ -39,6 +39,11 @@ class Payment : IPaymentProvider
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
     }
 
+    private string FormatPrice(decimal price)
+    {
+        return price.ToString(CultureInfo.InvariantCulture).Replace(".0", "", StringComparison.InvariantCulture) + ",00";
+    }
+
     /// <summary>
     /// Initiate a payment request with Borgun.
     /// When calling RequestAsync, always await the result.
@@ -89,7 +94,7 @@ class Payment : IPaymentProvider
                 { "returnurlerror", paymentSettings.ErrorUrl.ToString() + "?paymentError=errorPayment" },
                 { "returnurlsuccessserver", reportUrl.ToString() },
 
-                { "amount", total.ToString() + ",00" },
+                { "amount", FormatPrice(total) },
                 { "currency", paymentSettings.Currency },
                 { "language", paymentSettings.Language.ToUpper() == "IS-IS" ? "IS" : paymentSettings.Language.ToUpper() }
             };
@@ -100,8 +105,8 @@ class Payment : IPaymentProvider
 
                 formValues.Add("itemdescription_" + lineNumber, order.Title);
                 formValues.Add("itemcount_" + lineNumber, order.Quantity.ToString());
-                formValues.Add("itemunitamount_" + lineNumber, order.Price.ToString() + ",00");
-                formValues.Add("itemamount_" + lineNumber, order.GrandTotal.ToString() + ",00");
+                formValues.Add("itemunitamount_" + lineNumber, FormatPrice(order.Price));
+                formValues.Add("itemamount_" + lineNumber, FormatPrice(order.GrandTotal));
             }
 
             //if (borgunSettings.SkipReceipt)
@@ -152,7 +157,7 @@ class Payment : IPaymentProvider
                     paymentSettings.SuccessUrl.ToString(),
                     reportUrl.ToString(),
                     borgunOrderId,
-                    total.ToString() + ",00",
+                    FormatPrice(total),
                     paymentSettings.Currency
                 ).Message
             );
