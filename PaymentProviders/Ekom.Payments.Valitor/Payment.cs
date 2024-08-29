@@ -1,15 +1,8 @@
-using Ekom.Payments;
 using Ekom.Payments.Helpers;
-using Ekom.Payments.Valitor;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Web;
 
 namespace Ekom.Payments.Valitor;
@@ -86,6 +79,14 @@ class Payment : IPaymentProvider
             {
                 throw new NotSupportedException(
                     "Valitor Loans require MerchantName parameter");
+            }
+
+ 
+            ArgumentNullException.ThrowIfNull(valitorSettings.PaymentPageUrl);
+            
+            if (string.IsNullOrEmpty(valitorSettings.MerchantId))
+            {
+                throw new ArgumentNullException(nameof(valitorSettings.MerchantId));
             }
 
             var sb = new StringBuilder(valitorSettings.VerificationCode);

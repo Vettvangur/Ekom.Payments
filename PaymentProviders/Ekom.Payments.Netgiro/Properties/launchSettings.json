@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Ekom.Payments.Netgiro": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}
