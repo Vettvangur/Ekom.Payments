@@ -10,7 +10,7 @@ namespace Ekom.Payments.Valitor;
 /// <summary>
 /// Initiate a payment request with Valitor
 /// </summary>
-class Payment : IPaymentProvider
+public class Payment : IPaymentProvider
 {
     internal const string _ppNodeName = "valitor";
     /// <summary>
