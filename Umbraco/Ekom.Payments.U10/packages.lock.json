@@ -2297,7 +2297,8 @@
       "ekom.payments.aspnetcore": {
         "type": "Project",
         "dependencies": {
-          "Ekom.Payments.Core": "[0.0.1, )"
+          "Ekom.Payments.Core": "[0.0.1, )",
+          "System.Text.Json": "[6.0.10, )"
         }
       },
       "ekom.payments.core": {
