@@ -104,6 +104,8 @@
 
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
+        <PackageReference Include="Azure.Core" Version="1.44.1" />
+        <PackageReference Include="Azure.Identity" Version="1.13.1" />
         <PackageReference Include="Ekom.Common" Version="0.1.279" />
         <PackageReference Include="linq2db" Version="4.3.0" />
         <PackageReference Include="Microsoft.Data.SqlClient" Version="4.1.0" />
