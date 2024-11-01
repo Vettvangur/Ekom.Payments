@@ -167,8 +167,8 @@
       },
       "linq2db": {
         "type": "Transitive",
-        "resolved": "4.3.0",
-        "contentHash": "I/CbrqshgIQAuEpFvQZBFXTB1mquZzX9mGjwnIZjN7uh8sWI4+m6gTplNul9m2Zhb0M96m1iV5i7/vEKkellFw=="
+        "resolved": "4.4.1",
+        "contentHash": "ToKiX+XZD8QAsgWYxir8gCPK8i/JhdyWpMlvcOIpJToEHfGB02N/24FP4s7JvO8wnneeZqTKNYCNH5ACirvPYg=="
       },
       "Lucene.Net": {
         "type": "Transitive",
@@ -2335,7 +2335,7 @@
           "Ekom.Common": "[0.1.279, )",
           "Microsoft.Data.SqlClient": "[5.2.2, )",
           "System.Text.Json": "[6.0.10, )",
-          "linq2db": "[4.3.0, )"
+          "linq2db": "[4.4.1, )"
         }
       }
     }

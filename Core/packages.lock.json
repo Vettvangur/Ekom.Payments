@@ -43,9 +43,9 @@
       },
       "linq2db": {
         "type": "Direct",
-        "requested": "[4.3.0, )",
-        "resolved": "4.3.0",
-        "contentHash": "I/CbrqshgIQAuEpFvQZBFXTB1mquZzX9mGjwnIZjN7uh8sWI4+m6gTplNul9m2Zhb0M96m1iV5i7/vEKkellFw=="
+        "requested": "[4.4.1, )",
+        "resolved": "4.4.1",
+        "contentHash": "ToKiX+XZD8QAsgWYxir8gCPK8i/JhdyWpMlvcOIpJToEHfGB02N/24FP4s7JvO8wnneeZqTKNYCNH5ACirvPYg=="
       },
       "Microsoft.Data.SqlClient": {
         "type": "Direct",
