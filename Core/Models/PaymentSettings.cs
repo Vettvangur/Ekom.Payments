@@ -87,6 +87,11 @@ public class PaymentSettings : PaymentSettingsBase<PaymentSettings>
     }
 
     /// <summary>
+    /// ReportUrl can be used to override the default report url.
+    /// </summary>
+    public Uri? ReportUrl { get; set; } = null;
+
+    /// <summary>
     /// Override umbraco configured success url. Used by Ekom Payments to forward user to f.x. receipt page.
     /// When using umbraco value, netPayment adds reference to queryString to use with OrderRetriever on return.
     /// Commonly overriden in consumers checkout 

@@ -101,11 +101,14 @@ public class Payment : IPaymentProvider
                 _httpCtx
             ).ConfigureAwait(false);
 
-            paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
+            // Ensure the SuccessUrl is a full URI
+            var fullSuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
+
+            // Add the query string with the reference
+            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(fullSuccessUrl, $"?reference={orderStatus.UniqueId}");
 
             var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
-            var reportUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
+            var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
 
             // Begin populating form values to be submitted
             var formValues = new Dictionary<string, string?>

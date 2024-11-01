@@ -2,7 +2,7 @@ using System.Reflection;
 
 namespace Ekom.Payments;
 
-internal interface IUmbracoService
+public interface IUmbracoService
 {
     void PopulatePaymentProviderProperties(
         PaymentSettings settings,
