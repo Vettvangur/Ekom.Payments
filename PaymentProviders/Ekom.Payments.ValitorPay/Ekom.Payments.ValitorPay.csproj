@@ -42,7 +42,6 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\Core\Ekom.Payments.Core.csproj" />
-        <ProjectReference Include="..\ValitorPay\ValitorPay\Vettvangur.ValitorPay.csproj" />
     </ItemGroup>
 
 </Project>
