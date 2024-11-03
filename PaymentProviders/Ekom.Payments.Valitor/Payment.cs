@@ -81,7 +81,6 @@ public class Payment : IPaymentProvider
                     "Valitor Loans require MerchantName parameter");
             }
 
- 
             ArgumentNullException.ThrowIfNull(valitorSettings.PaymentPageUrl);
             
             if (string.IsNullOrEmpty(valitorSettings.MerchantId))
