@@ -43,6 +43,7 @@
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
+        <PackageReference Include="System.Text.Json" Version="6.0.10" />
     </ItemGroup>
 
     <ItemGroup>
