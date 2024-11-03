@@ -40,6 +40,12 @@ steps:
     command: 'restore'
     restoreSolution: '$(solution)'
 
+- script: dotnet --info
+  displayName: 'Show .NET Info'
+  
+- script: dotnet add package System.Text.Json --version 6.0.10
+  displayName: 'Add System.Text.Json Package'
+
 - task: VSBuild@1
   inputs:
     solution: '$(solution)'
