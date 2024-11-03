@@ -109,11 +109,8 @@
         <PackageReference Include="Ekom.Common" Version="0.1.279" />
         <PackageReference Include="linq2db" Version="5.4.1" />
         <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+        <PackageReference Include="System.Text.Json" Version="6.0.10" />
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
-        <PackageReference Include="System.Text.Json" Version="6.0.10">
-            <Private>true</Private>
-            <!-- Ensures the DLL is copied to the output folder -->
-        </PackageReference>
     </ItemGroup>
     <ItemGroup>
       <Compile Update="Properties\Resources.Designer.cs">
