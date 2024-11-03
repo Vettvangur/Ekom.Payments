@@ -40,14 +40,16 @@ steps:
     echo "##vso[task.setvariable variable=DOTNET_ROOT]$(Agent.ToolsDirectory)/dotnet"
     set PATH=$(Agent.ToolsDirectory)/dotnet;%PATH%
   displayName: 'Set DOTNET_ROOT and Update PATH'
+  
+- script: dotnet --info
+  displayName: 'Show .NET Info'
 
 - task: NuGetCommand@2
   inputs:
     command: 'restore'
     restoreSolution: '$(solution)'
 
-- script: dotnet --info
-  displayName: 'Show .NET Info'
+
 
 - task: VSBuild@1
   inputs:
