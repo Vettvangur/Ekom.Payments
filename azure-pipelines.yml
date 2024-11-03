@@ -34,6 +34,7 @@ steps:
   inputs:
     packageType: 'sdk'
     version: '6.0.x'
+    installationPath: $(Agent.ToolsDirectory)/dotnet
 
 - task: NuGetCommand@2
   inputs:
@@ -42,9 +43,6 @@ steps:
 
 - script: dotnet --info
   displayName: 'Show .NET Info'
-  
-- script: dotnet add package System.Text.Json --version 6.0.10
-  displayName: 'Add System.Text.Json Package'
 
 - task: VSBuild@1
   inputs:
