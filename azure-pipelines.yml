@@ -37,10 +37,6 @@ steps:
   
 - script: dotnet --info
   displayName: 'Show .NET Info'
-  
-- script: |
-    dotnet nuget locals all --clear
-  displayName: 'Clear NuGet Cache'
 
 - task: NuGetCommand@2
   inputs:
