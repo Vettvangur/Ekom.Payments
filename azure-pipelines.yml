@@ -26,33 +26,22 @@ variables:
   buildConfiguration: 'Release'
   
 steps:
-- task: NuGetToolInstaller@1
-  inputs:
-    versionSpec: '7.x'
 
 - task: UseDotNet@2
+  displayName: Use DotNet $(dotNetVersion)
   inputs:
     packageType: 'sdk'
-    version: '7.0.x'
-  
-- script: dotnet --info
-  displayName: 'Show .NET Info'
-
-- task: NuGetCommand@2
+    version: '$(dotNetVersion)'
+    performMultiLevelLookup: true
+    
+- task: DotNetCoreCLI@2
+  displayName: dotnet restore
   inputs:
     command: 'restore'
-    restoreSolution: '$(solution)'
+    projects: '*.sln'
+    feedsToUse: 'select'
+    vstsFeed: '2ec80bf7-377e-42e0-9fcd-fe6b6fd9660f'
 
-
-- task: VSBuild@1
-  inputs:
-    solution: '$(solution)'
-    platform: '$(buildPlatform)'
-    configuration: '$(buildConfiguration)'
-    clean: true
-
-- task: MicrosoftSecurityDevOps@1
-  displayName: 'Microsoft Security DevOps'
 
 - task: DotNetCoreCLI@2
   inputs:
@@ -61,12 +50,6 @@ steps:
     includesymbols: true
     versioningScheme: 'byBuildNumber'
 
-# - task: DotNetCoreCLI@2
-#   inputs:
-#     command: 'push'
-#     packagesToPush: '$(Build.ArtifactStagingDirectory)/**/*.nupkg;$(Build.ArtifactStagingDirectory)/**/*.snupkg'
-#     nuGetFeedType: 'external'
-#     publishFeedCredentials: 'VV Public NuGet'
 
 - task: NuGetCommand@2
   inputs:
