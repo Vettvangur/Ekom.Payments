@@ -3,7 +3,7 @@
     <PropertyGroup>
         <RootNamespace>Ekom.Payments</RootNamespace>
 
-        <TargetFrameworks>net6.0</TargetFrameworks>
+        <TargetFrameworks>net7.0</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
 
@@ -109,7 +109,6 @@
         <PackageReference Include="Ekom.Common" Version="0.1.279" />
         <PackageReference Include="linq2db" Version="5.4.1" />
         <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
-        <PackageReference Include="System.Text.Json" Version="6.0.10" />
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
     </ItemGroup>
     <ItemGroup>

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+        <TargetFramework>net7.0</TargetFramework>
         <AssemblyName>Ekom.Payments.U10</AssemblyName>
         <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
         <RootNamespace>Ekom.Payments.Umb</RootNamespace>
@@ -60,10 +60,9 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
-        <PackageReference Include="Umbraco.Cms.Core" Version="10.8.7" />
-        <PackageReference Include="Umbraco.Cms.Web.BackOffice" Version="10.8.7" />
-        <PackageReference Include="Umbraco.Cms.Web.Website" Version="10.8.7" />
-        <PackageReference Include="System.Text.Json" Version="6.0.10" />
+        <PackageReference Include="Umbraco.Cms.Core" Version="12.3.10" />
+        <PackageReference Include="Umbraco.Cms.Web.BackOffice" Version="12.3.10" />
+        <PackageReference Include="Umbraco.Cms.Web.Website" Version="12.3.10" />
     </ItemGroup>
 
     <ItemGroup>

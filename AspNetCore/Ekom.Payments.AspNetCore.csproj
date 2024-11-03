@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+        <TargetFramework>net7.0</TargetFramework>
         <AssemblyName>Ekom.Payments.AspNetCore</AssemblyName>
         <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
 
@@ -64,9 +64,6 @@
         </AssemblyAttribute>
     </ItemGroup>
 
-    <ItemGroup>
-        <PackageReference Include="System.Text.Json" Version="6.0.10" />
-    </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Core\Ekom.Payments.Core.csproj" />
