@@ -29,9 +29,7 @@ steps:
 - task: NuGetToolInstaller@1
   inputs:
     versionSpec: '6.x'
-- script: |
-    nuget locals all -clear
-  displayName: 'Clear NuGet Cache'
+
 - task: UseDotNet@2
   inputs:
     packageType: 'sdk'
