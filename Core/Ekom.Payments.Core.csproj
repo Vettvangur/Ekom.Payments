@@ -9,7 +9,7 @@
 
         <!-- Package properties -->
         <PackageId>Ekom.Payments.Core</PackageId>
-        <Version>0.2.0</Version>
+        <Version>0.2.1</Version>
         <Title>Ekom Payments Core</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>

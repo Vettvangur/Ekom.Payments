@@ -11,7 +11,7 @@
 
         <!-- Package properties -->
         <PackageId>Ekom.Payments.U10</PackageId>
-        <Version>0.2.0</Version>
+        <Version>0.2.1</Version>
         <Title>Ekom Payments Umbraco 10</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>

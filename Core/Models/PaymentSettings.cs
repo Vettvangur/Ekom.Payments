@@ -8,6 +8,12 @@ namespace Ekom.Payments;
 public class PaymentSettings : PaymentSettingsBase<PaymentSettings>
 {
     /// <summary>
+    /// Order Unique Id, used to identify order in payment provider callback.
+    /// </summary>
+    [PaymentSettingsIgnore]
+    public required Guid OrderUniqueId { get; set; }
+
+    /// <summary>
     /// Chooses a specific payment provider node.
     /// Useful when you have multiple umbraco nodes targetting the same base payment provider.
     /// F.x. Borgun EN and IS with varying currencies and xml configurations.

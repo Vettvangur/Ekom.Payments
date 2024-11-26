@@ -86,7 +86,7 @@ class Payment : IPaymentProvider
                 total,
                 paymentSettings,
                 netgiroSettings,
-                null,
+                paymentSettings.OrderUniqueId.ToString(),
                 _httpCtx
             ).ConfigureAwait(false);
 

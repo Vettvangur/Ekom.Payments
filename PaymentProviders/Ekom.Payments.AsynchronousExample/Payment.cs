@@ -83,7 +83,7 @@ class Payment : IPaymentProvider
                 total,
                 paymentSettings,
                 asynchronousExampleSettings,
-                null,
+                paymentSettings.OrderUniqueId.ToString(),
                 _httpCtx
             ).ConfigureAwait(false);
 

@@ -96,7 +96,7 @@ public class Payment : IPaymentProvider
                 total,
                 paymentSettings,
                 valitorSettings,
-                null,
+                paymentSettings.OrderUniqueId.ToString(),
                 _httpCtx
             ).ConfigureAwait(false);
 

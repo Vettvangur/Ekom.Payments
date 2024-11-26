@@ -143,7 +143,7 @@ class Payment : IPaymentProvider
                 total,
                 paymentSettings,
                 borgunSettings,
-                null,
+                paymentSettings.OrderUniqueId.ToString(),
                 _httpCtx
             ).ConfigureAwait(false);
 
