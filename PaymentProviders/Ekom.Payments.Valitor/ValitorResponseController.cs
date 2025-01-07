@@ -125,19 +125,20 @@ public class ValitorResponseController : ControllerBase
                         _logger.LogInformation($"Valitor Payment Response - SUCCESS - Previously validated");
                     }
 
-                    var successUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl.ToString(), Request);
-                    return Redirect(successUrl.ToString());
+                    return Ok();
                 }
                 else
                 {
                     _logger.LogInformation($"Valitor Payment Response - Verification Error - Order ID: {order.UniqueId}");
+
                     Events.OnError(this, new ErrorEventArgs
                     {
                         OrderStatus = order,
                     });
 
                     var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl.ToString(), Request);
-                    return Redirect(cancelUrl.ToString());
+
+                    return StatusCode(500);
                 }
             }
             catch (Exception ex)
@@ -163,6 +164,7 @@ public class ValitorResponseController : ControllerBase
         }
 
         _logger.LogDebug(JsonConvert.SerializeObject(ModelState));
-        return Redirect("/");
+
+        return BadRequest();
     }
 }
