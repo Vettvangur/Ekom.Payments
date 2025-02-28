@@ -57,10 +57,10 @@ public class Response
     /// </summary>
     public long TransactionNumber { get; set; }
 
-    /// <summary>
-    /// GUID sem Greiðslusíðan býr til og er einkvæmt fyrir sölu. 
-    /// </summary>
-    public Guid SaleID { get; set; }
+    ///// <summary>
+    ///// GUID sem Greiðslusíðan býr til og er einkvæmt fyrir sölu. 
+    ///// </summary>
+    //public Guid SaleID { get; set; }
 
     /// <summary>
     /// Samningsnúmer sem sala fór á. 
