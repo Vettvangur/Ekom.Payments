@@ -46,7 +46,7 @@ steps:
 - task: DotNetCoreCLI@2
   inputs:
     command: 'pack'
-    packagesToPack: '**/Ekom.Payments.Core.csproj;**/Ekom.Payments.AspNetCore.csproj;**/Ekom.Payments.U10.csproj;**/Ekom.Payments.Valitor.csproj;**/Ekom.Payments.Borgun.csproj;'
+    packagesToPack: '**/Ekom.Payments.Core.csproj;**/Ekom.Payments.AspNetCore.csproj;**/Ekom.Payments.U10.csproj;**/Ekom.Payments.Valitor.csproj;**/Ekom.Payments.Borgun.csproj;**/Ekom.Payments.Netgiro.csproj;'
     includesymbols: true
     versioningScheme: 'byBuildNumber'
 
