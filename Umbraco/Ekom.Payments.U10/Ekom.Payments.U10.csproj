@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net7.0</TargetFramework>
+        <TargetFramework>net8.0</TargetFramework>
         <AssemblyName>Ekom.Payments.U10</AssemblyName>
         <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
         <RootNamespace>Ekom.Payments.Umb</RootNamespace>
@@ -17,7 +17,7 @@
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
         <PackageIcon>images\VV_Logo.png</PackageIcon>
-        <Description>Ekom Payments Umbraco 10 - Vettvangur E-Commerce solution</Description>
+        <Description>Ekom Payments - Umbraco E-Commerce solution</Description>
         <PackageReleaseNotes></PackageReleaseNotes>
         <Copyright>Copyright 2022</Copyright>
         <PackageTags></PackageTags>
@@ -60,9 +60,9 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
-        <PackageReference Include="Umbraco.Cms.Core" Version="12.3.10" />
-        <PackageReference Include="Umbraco.Cms.Web.BackOffice" Version="12.3.10" />
-        <PackageReference Include="Umbraco.Cms.Web.Website" Version="12.3.10" />
+        <PackageReference Include="Umbraco.Cms.Core" Version="13.7.0" />
+        <PackageReference Include="Umbraco.Cms.Web.BackOffice" Version="13.7.0" />
+        <PackageReference Include="Umbraco.Cms.Web.Website" Version="13.7.0" />
     </ItemGroup>
 
     <ItemGroup>
