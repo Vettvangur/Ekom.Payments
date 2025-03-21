@@ -1,4 +1,4 @@
-namespace Ekom.Payments.Valitor;
+namespace Ekom.Payments.Straumur;
 
 /// <summary>
 /// Callbacks to run only for this provider on success/error.
@@ -14,7 +14,7 @@ public static class Events
     internal static void OnSuccess(object sender, SuccessEventArgs successEventArgs)
     {
         Success?.Invoke(sender, successEventArgs);
-        Ekom.Payments.Events.OnSuccess(sender, successEventArgs);
+        Payments.Events.OnSuccess(sender, successEventArgs);
     }
     
     /// <summary>
@@ -25,7 +25,7 @@ public static class Events
     internal static void OnError(object sender, ErrorEventArgs errorEventArgs)
     {
         Error?.Invoke(sender, errorEventArgs);
-        Ekom.Payments.Events.OnError(sender, errorEventArgs);
+        Payments.Events.OnError(sender, errorEventArgs);
     }
     
     /// <summary>

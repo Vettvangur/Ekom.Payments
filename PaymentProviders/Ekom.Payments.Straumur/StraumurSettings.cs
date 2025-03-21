@@ -5,37 +5,17 @@ public class StraumurSettings : PaymentSettingsBase<StraumurSettings>
     public string ReportUrl { get; set; }
     
     [EkomProperty(PropertyEditorType.Store)]
-    public string MerchantId { get; set; }
+    public string TerminalIdenitifer { get; set; }
 
     [EkomProperty(PropertyEditorType.Store)]
-    public string VerificationCode { get; set; }
+    public string ApiKey { get; set; }
 
-    /// <summary>
-    /// Required by Valitor loans
-    /// </summary>
     [EkomProperty(PropertyEditorType.Store)]
-    public string MerchantName { get; set; }
-
-    ///// <summary>
-    ///// Currently unsupported
-    ///// </summary>
-    //public bool SkipReceipt { get; set; }
-    
-    [EkomProperty(PropertyEditorType.Language)]
-    public string PaymentSuccessfulURLText { get; set; }
-    
+    public string HmacKey { get; set; }
     /// <summary>
-    /// Dev https://paymentweb.uat.valitor.is/
+    /// Dev https://checkout-api.staging.straumur.is/api/v1/hostedcheckout
     /// Prod https://greidslusida.valitor.is
     /// </summary>
     public Uri PaymentPageUrl { get; set; }
 
-    /// <summary>
-    /// Controls how long the user has to complete checkout on payment portal page.
-    /// Must be configured in tandem with a TimeoutRedirectURL property on umbraco payment provider.
-    /// </summary>
-    public int SessionExpiredTimeoutInSeconds { get; set; }
-
-    [EkomProperty(PropertyEditorType.Language)]
-    public Uri SessionExpiredRedirectURL { get; set; }
 }

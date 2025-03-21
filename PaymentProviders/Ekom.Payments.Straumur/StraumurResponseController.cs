@@ -47,7 +47,7 @@ public class StraumurResponseController : ControllerBase
     [ApiExplorerSettings(IgnoreApi = true)]
     [HttpGet, HttpPost]
     [Route("")]
-    public async Task<IActionResult> Post([FromQuery] Response straumurResp)
+    public async Task<IActionResult> Post([FromBody]Response straumurResp)
     {
         _logger.LogInformation("Straumur Payment Response - Start");
 
@@ -59,7 +59,7 @@ public class StraumurResponseController : ControllerBase
             {
                 _logger.LogDebug("Straumur Payment Response - ModelState.IsValid");
 
-                if (!Guid.TryParse(straumurResp.ReferenceNumber, out var orderId))
+                if (!Guid.TryParse(straumurResp.MerchantReference, out var orderId))
                 {
                     return BadRequest();
                 }
@@ -76,9 +76,11 @@ public class StraumurResponseController : ControllerBase
                 var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
                 var straumurSettings = JsonConvert.DeserializeObject<StraumurSettings>(order.EkomPaymentProviderData);
 
-                string digitalSignature = CryptoHelpers.GetSHA256HexStringSum(straumurSettings.VerificationCode + straumurResp.ReferenceNumber);
+                var hmacKey = straumurSettings.HmacKey;
+                var calculatedSignature = StraumurResponseHelper.GetHmacSignature(hmacKey, straumurResp);
 
-                if (straumurResp.DigitalSignatureResponse.Equals(digitalSignature, StringComparison.InvariantCultureIgnoreCase))
+
+                if (straumurResp.HmacSignature == calculatedSignature)
                 {
                     _logger.LogInformation("Straumur Payment Response - DigitalSignatureResponse Verified");
 
@@ -90,7 +92,7 @@ public class StraumurResponseController : ControllerBase
                             {
                                 Id = order.UniqueId,
                                 Date = DateTime.Now,
-                                CardNumber = straumurResp.CardNumberMasked,
+                                CardNumber = straumurResp.AdditionalData.CardNumber,
                                 CustomData = JsonConvert.SerializeObject(straumurResp),
                                 Amount = order.Amount.ToString(),
                             };

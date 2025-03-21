@@ -1,70 +1,55 @@
-using Ekom.Payments.Helpers;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Configuration;
+
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Ekom.Payments.Straumur;
 
-/// <summary>
-/// An alternative to subscribing to the valitor callback event.
-/// This helper can be invoked in the view or controller that receives the redirect from Valitor.
-/// Only returns <see cref="OrderStatus"/> on successful verification
-/// </summary>
 public class StraumurResponseHelper
 {
-    readonly ILogger<StraumurResponseHelper> _logger;
-    readonly IConfiguration _configuration;
-    readonly IOrderService _orderSvc;
 
-    /// <summary>
-    /// ctor
-    /// </summary>
-    public StraumurResponseHelper(
-        ILogger<StraumurResponseHelper> logger,
-        IOrderService orderSvc,
-        IConfiguration configuration)
+    public static string GetHmacSignature(string hmacKey, Response message)
     {
-        _logger = logger;
-        _orderSvc = orderSvc;
-        _configuration = configuration;
+        var values = new string?[] {
+            hmacKey,
+            message.CheckoutReference,
+            message.PayfacReference,
+            message.MerchantReference,
+            message.Amount,
+            message.Currency,
+            message.Reason,
+            message.Success };
+
+        var payload = string.Join(':', values.Select(x => x ?? string.Empty));
+        var binaryPayload = ConvertToByteArray(payload, Encoding.UTF8);
+        var binaryKey = ConvertHexToByteArray(hmacKey);
+        var hash = ComputeSha256Hash(binaryPayload, binaryKey);
+        return Convert.ToBase64String(hash);
     }
 
-    /// <summary>
-    /// Gets Order
-    /// Only returns <see cref="OrderStatus"/> on successful verification
-    /// </summary>
-    public OrderStatus GetOrder(string reference)
+    static byte[] ConvertToByteArray(string str, Encoding encoding)
     {
-        if (!string.IsNullOrEmpty(reference)
-        && Guid.TryParse(reference, out var guid))
-        {
-            return _orderSvc.GetAsync(guid).Result;
-        }
-        else
-        {
-            return null;
-        }
+        return encoding.GetBytes(str);
     }
 
-    /// <summary>
-    /// An alternative to subscribing to the straumur callback event.
-    /// This helper can be invoked in the view or controller that receives the redirect from Valitor.
-    /// Only returns <see cref="OrderStatus"/> on successful verification
-    /// </summary>
-    public async Task<OrderStatus?> Verify(
-        Response straumurResp, 
-        string verificationcode = null)
+    static byte[] ConvertHexToByteArray(string hex)
     {
-        verificationcode ??= _configuration["Ekom:Payments:Straumur:VerificationCode"];
-        string DigitalSignature = CryptoHelpers.GetMD5StringSum(verificationcode + straumurResp.ReferenceNumber);
-
-        if (straumurResp.DigitalSignatureResponse.Equals(DigitalSignature, StringComparison.InvariantCultureIgnoreCase))
+        if ((hex.Length % 2) == 1)
         {
-            if (Guid.TryParse(straumurResp.ReferenceNumber, out var guid))
-            {
-                return await _orderSvc.GetAsync(guid);
-            }
+            hex += '0';
         }
 
-        return null;
+        var bytes = new byte[hex.Length / 2];
+        for (var i = 0; i < hex.Length; i += 2)
+        {
+            bytes[i / 2] = Convert.ToByte(hex.Substring(i, 2), 16);
+        }
+
+        return bytes;
+    }
+
+    static byte[] ComputeSha256Hash(byte[] payload, byte[] key)
+    {
+        using HMACSHA256 hmacSha256Hash = new(key);
+        return hmacSha256Hash.ComputeHash(payload);
     }
 }

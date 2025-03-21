@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Text;
 
 namespace Ekom.Payments.Helpers;
@@ -21,6 +20,13 @@ static class FormHelper
         html.Append("</form>");
 
         html.Append("<script>(function(){ document.getElementById(\"payform\").submit(); }())</script>");
+
+        return html.ToString();
+    }
+
+    public static string Redirect(string url)
+    {
+        var html = new StringBuilder($"<script>(function(){{ window.location.href = \"{url}\"; }}())</script>");
 
         return html.ToString();
     }

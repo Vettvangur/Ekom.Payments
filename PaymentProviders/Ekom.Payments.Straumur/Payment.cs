@@ -1,9 +1,8 @@
 using Ekom.Payments.Helpers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using System.Globalization;
-using System.Text;
-using System.Web;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace Ekom.Payments.Straumur;
 
@@ -23,6 +22,7 @@ public class Payment : IPaymentProvider
     readonly IUmbracoService _uService;
     readonly IOrderService _orderService;
     readonly HttpContext _httpCtx;
+    readonly IHttpClientFactory _httpClientFactory;
 
     /// <summary>
     /// ctor for Unit Tests
@@ -32,13 +32,15 @@ public class Payment : IPaymentProvider
         PaymentsConfiguration settings,
         IUmbracoService uService,
         IOrderService orderService,
-        IHttpContextAccessor httpContext)
+        IHttpContextAccessor httpContext,
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
         _settings = settings;
         _uService = uService;
         _orderService = orderService;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
+        _httpClientFactory=httpClientFactory;
     }
 
     /// <summary>
@@ -73,13 +75,10 @@ public class Payment : IPaymentProvider
 
             ArgumentNullException.ThrowIfNull(straumurSettings.PaymentPageUrl);
             
-            if (string.IsNullOrEmpty(straumurSettings.MerchantId))
+            if (string.IsNullOrEmpty(straumurSettings.TerminalIdenitifer))
             {
-                throw new ArgumentNullException(nameof(straumurSettings.MerchantId));
+                throw new ArgumentNullException(nameof(straumurSettings.TerminalIdenitifer));
             }
-
-            var sb = new StringBuilder(straumurSettings.VerificationCode);
-            sb.Append("0");
 
             // Persist in database and retrieve unique order id
             var orderStatus = await _orderService.InsertAsync(
@@ -96,97 +95,35 @@ public class Payment : IPaymentProvider
             var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
             var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
 
-            // Begin populating form values to be submitted
-            var formValues = new Dictionary<string, string?>
+            var request = new PaymentRequest
             {
-                { "MerchantID", straumurSettings.MerchantId },
-                { "AuthorizationOnly", "0" },
-
-                { "ReferenceNumber", orderStatus.UniqueId.ToString() },
-
-                { "Currency", paymentSettings.Currency },
-                { "Language", ParseSupportedLanguages(paymentSettings.Language) },
-
-                { "PaymentSuccessfulURL", paymentSettings.SuccessUrl.ToString() },
-                { "PaymentSuccessfulURLText", /*straumurSettings.SkipReceipt*/ true
-                    ? "-" :
-                    straumurSettings.PaymentSuccessfulURLText
-                },
-                { "PaymentSuccessfulAutomaticRedirect", /*straumurSettings.SkipReceipt*/ true
-                    ? "1"
-                    : "0"
-                },
-                { "PaymentCancelledURL", cancelUrl.ToString() },
-
-                { "PaymentSuccessfulServerSideURL", reportUrl.ToString() },
+                TerminalIdentifier = straumurSettings.TerminalIdenitifer,
+                Reference = orderStatus.UniqueId.ToString(),
+                Currency = paymentSettings.Currency,
+                Amount = (int)total,
+                ReturnUrl = paymentSettings.SuccessUrl.ToString()
             };
 
-            if (straumurSettings.SessionExpiredTimeoutInSeconds != 0
-            && straumurSettings.SessionExpiredRedirectURL != null)
-            {
-                formValues.Add("SessionExpiredTimeoutInSeconds", straumurSettings.SessionExpiredTimeoutInSeconds.ToString());
-                formValues.Add("SessionExpiredRedirectURL", straumurSettings.SessionExpiredRedirectURL.ToString());
-            }
-            else if (straumurSettings.SessionExpiredTimeoutInSeconds != 0)
-            {
-                _logger.LogError("Requested session expired timeout but could not find redirect url, please configure payment provider with 'timeoutRedirectURL' property");
-            }
+            _logger.LogInformation($"Straumur Payment Request - Amount: {total} OrderId: {orderStatus.UniqueId}");
 
-            for (int x = 0, length = paymentSettings.Orders.Count(); x < length; x++)
-            {
-                var order = paymentSettings.Orders.ElementAt(x);
+            var httpClient = _httpClientFactory.CreateClient("straumur");
 
-                var lineNumber = x + 1;
+            var responseMessage = await httpClient.PostAsJsonAsync(straumurSettings.PaymentPageUrl, request);
 
-                formValues.Add($"Product_{lineNumber}_Description",
-                    HttpUtility.UrlEncode(order.Title, Encoding.GetEncoding("ISO-8859-1")));
-                formValues.Add($"Product_{lineNumber}_Quantity", order.Quantity.ToString());
-                formValues.Add($"Product_{lineNumber}_Price", ((int)order.Price).ToString());
-                formValues.Add($"Product_{lineNumber}_Discount", order.Discount.ToString());
+            var responseContent = await responseMessage.Content.ReadAsStringAsync();
 
-                sb.Append(order.Quantity.ToString());
-                sb.Append(((int)order.Price).ToString());
-                sb.Append(order.Discount.ToString());
-            }
+            var response = JsonSerializer.Deserialize<PaymentRequestResponse>(responseContent);
 
-            sb.Append(straumurSettings.MerchantId);
-            sb.Append(orderStatus.UniqueId);
-            sb.Append(paymentSettings.SuccessUrl);
-            sb.Append(reportUrl);
-            sb.Append(paymentSettings.Currency);
-
-            formValues.Add("DigitalSignature", CryptoHelpers.GetSHA256HexStringSum(sb.ToString()));
-
-            _logger.LogInformation("Valitor Payment Request - Amount: " + total + " OrderId: " + orderStatus.UniqueId);
-
-            return FormHelper.CreateRequest(formValues, straumurSettings.PaymentPageUrl.ToString());
+            return FormHelper.Redirect(response.Url);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AsynchronousExample Payment Request - Payment Request Failed");
+            _logger.LogError(ex, "Straumur Payment Request - Payment Request Failed");
             Events.OnError(this, new ErrorEventArgs
             {
                 Exception = ex,
             });
             throw;
-        }
-    }
-
-    public string ParseSupportedLanguages(string language)
-    {
-        var parsed
-            = CultureInfo.GetCultureInfo(language).TwoLetterISOLanguageName.ToUpper();
-
-        switch (parsed)
-        {
-            case "IS":
-            case "EN":
-            case "DA":
-            case "DE":
-                return parsed;
-
-            default:
-                return "IS";
         }
     }
 }
