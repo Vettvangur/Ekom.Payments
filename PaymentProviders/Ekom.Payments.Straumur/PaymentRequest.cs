@@ -31,4 +31,19 @@ public class PaymentRequest
     /// Open Section "Terminals" > Select Terminal to open Details panel > Copy Terminal Identifier.
     /// </summary>
     public string TerminalIdentifier { get; set; }
+
+    public string Culture { get; set; }
+
+    public List<Item> Items { get; set; }
+}
+
+public class Item
+{
+    public string Name { get; set; }
+
+    public int Amount { get; set; }
+
+    public int Quantity { get; set; }
+
+    public int UnitPrice { get; set; }
 }

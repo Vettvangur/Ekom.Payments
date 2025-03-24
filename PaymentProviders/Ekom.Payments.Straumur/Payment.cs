@@ -1,8 +1,11 @@
 using Ekom.Payments.Helpers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using System.Web;
 
 namespace Ekom.Payments.Straumur;
 
@@ -50,7 +53,7 @@ public class Payment : IPaymentProvider
     /// <param name="paymentSettings">Configuration object for PaymentProviders</param>
     public async Task<string> RequestAsync(PaymentSettings paymentSettings)
     {
-        if (paymentSettings == null)
+       if (paymentSettings == null)
             throw new ArgumentNullException(nameof(paymentSettings));
         if (paymentSettings.Orders == null)
             throw new ArgumentNullException(nameof(paymentSettings.Orders));
@@ -95,18 +98,37 @@ public class Payment : IPaymentProvider
             var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
             var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
 
+            var items = new List<Item>();
+
+            foreach (var lineItem in paymentSettings.Orders)
+            {
+                var item = new Item()
+                {
+                    Name = lineItem.Title,
+                    Quantity = lineItem.Quantity,
+                    UnitPrice = (int)lineItem.Price * 100, // Price is in ISK, Straumur requires two decimal places
+                    Amount = (int)lineItem.GrandTotal * 100, // Price is in ISK, Straumur requires two decimal places
+                };
+
+                items.Add(item);
+            }
+
             var request = new PaymentRequest
             {
                 TerminalIdentifier = straumurSettings.TerminalIdenitifer,
                 Reference = orderStatus.UniqueId.ToString(),
                 Currency = paymentSettings.Currency,
-                Amount = (int)total,
-                ReturnUrl = paymentSettings.SuccessUrl.ToString()
+                Amount = (int)total * 100, // Price is in ISK, Straumur requires two decimal places
+                ReturnUrl = paymentSettings.SuccessUrl.ToString(),
+                Culture = ParseSupportedLanguages(paymentSettings.Language),
+                Items = items
             };
 
             _logger.LogInformation($"Straumur Payment Request - Amount: {total} OrderId: {orderStatus.UniqueId}");
 
             var httpClient = _httpClientFactory.CreateClient("straumur");
+
+            httpClient.DefaultRequestHeaders.Add("X-API-key", straumurSettings.ApiKey);
 
             var responseMessage = await httpClient.PostAsJsonAsync(straumurSettings.PaymentPageUrl, request);
 
@@ -114,7 +136,7 @@ public class Payment : IPaymentProvider
 
             var response = JsonSerializer.Deserialize<PaymentRequestResponse>(responseContent);
 
-            return FormHelper.Redirect(response.Url);
+            return FormHelper.CreateRequest(new Dictionary<string, string?>(), response.Url, "GET");
         }
         catch (Exception ex)
         {
@@ -124,6 +146,22 @@ public class Payment : IPaymentProvider
                 Exception = ex,
             });
             throw;
+        }
+    }
+
+    public static string ParseSupportedLanguages(string language)
+    {
+        var parsed
+            = CultureInfo.GetCultureInfo(language).TwoLetterISOLanguageName.ToUpper();
+
+        switch (parsed)
+        {
+            case "IS":
+                return "is";
+            case "EN":
+                return "en";
+            default:
+                return "is";
         }
     }
 }
