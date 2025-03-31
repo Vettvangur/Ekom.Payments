@@ -126,7 +126,9 @@ public class Payment : IPaymentProvider
 
             _logger.LogInformation($"Straumur Payment Request - Amount: {total} OrderId: {orderStatus.UniqueId}");
 
-            var httpClient = _httpClientFactory.CreateClient("straumur");
+            var httpClient = _httpClientFactory.CreateClient();
+
+            httpClient.DefaultRequestHeaders.Add("X-API-key", straumurSettings.ApiKey);
 
             var responseMessage = await httpClient.PostAsJsonAsync(straumurSettings.PaymentPageUrl, request);
 
