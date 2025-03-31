@@ -1,3 +1,4 @@
+using Azure;
 using Ekom.Payments.Helpers;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
@@ -78,7 +79,6 @@ public class StraumurResponseController : ControllerBase
 
                 var hmacKey = straumurSettings.HmacKey;
                 var calculatedSignature = StraumurResponseHelper.GetHmacSignature(hmacKey, straumurResp);
-
 
                 if (straumurResp.HmacSignature == calculatedSignature)
                 {

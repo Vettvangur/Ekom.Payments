@@ -9,8 +9,8 @@ public class StraumurResponseHelper
 
     public static string GetHmacSignature(string hmacKey, Response message)
     {
+
         var values = new string?[] {
-            hmacKey,
             message.CheckoutReference,
             message.PayfacReference,
             message.MerchantReference,
