@@ -128,11 +128,22 @@ public class Payment : IPaymentProvider
 
             var httpClient = _httpClientFactory.CreateClient("straumur");
 
-            httpClient.DefaultRequestHeaders.Add("X-API-key", straumurSettings.ApiKey);
-
             var responseMessage = await httpClient.PostAsJsonAsync(straumurSettings.PaymentPageUrl, request);
 
             var responseContent = await responseMessage.Content.ReadAsStringAsync();
+
+            try
+            {
+                responseMessage.EnsureSuccessStatusCode();
+            }
+            catch(Exception ex)
+            {
+                var error = JsonSerializer.Deserialize<StraumurError>(responseContent);
+
+                _logger.LogError(ex, "Straumur Payment Request Error" , error);
+
+                throw;
+            }
 
             var response = JsonSerializer.Deserialize<PaymentRequestResponse>(responseContent);
 

@@ -2319,7 +2319,7 @@
       "ekom.payments.aspnetcore": {
         "type": "Project",
         "dependencies": {
-          "Ekom.Payments.Core": "[0.0.1, )"
+          "Ekom.Payments.Core": "[0.2.1, )"
         }
       },
       "ekom.payments.core": {
@@ -2330,6 +2330,12 @@
           "Ekom.Common": "[0.1.279, )",
           "Microsoft.Data.SqlClient": "[5.2.2, )",
           "linq2db": "[5.4.1, )"
+        }
+      },
+      "ekom.payments.straumur": {
+        "type": "Project",
+        "dependencies": {
+          "Ekom.Payments.Core": "[0.2.1, )"
         }
       }
     }

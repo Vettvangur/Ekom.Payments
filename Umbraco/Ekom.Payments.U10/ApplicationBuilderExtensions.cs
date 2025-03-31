@@ -15,6 +15,11 @@ static class ApplicationBuilderExtensions
 
         services.AddTransient<IUmbracoService, UmbracoService>();
 
+        services.AddHttpClient("straumur", client =>
+        {
+            client.DefaultRequestHeaders.Add("X-API-key", configuration["Ekom:Payments:straumur:apikey"]);
+        });
+
         return services;
     }
 }
