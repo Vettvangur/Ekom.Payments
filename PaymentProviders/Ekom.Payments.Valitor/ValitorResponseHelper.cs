@@ -1,8 +1,6 @@
-using Ekom.Payments.Exceptions;
 using Ekom.Payments.Helpers;
-using Microsoft.Extensions.Logging;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Ekom.Payments.Valitor;
 
@@ -34,12 +32,12 @@ public class ValitorResponseHelper
     /// Gets Order
     /// Only returns <see cref="OrderStatus"/> on successful verification
     /// </summary>
-    public OrderStatus GetOrder(string reference)
+    public async Task<OrderStatus?> GetOrder(string reference)
     {
         if (!string.IsNullOrEmpty(reference)
         && Guid.TryParse(reference, out var guid))
         {
-            return _orderSvc.GetAsync(guid).Result;
+            return await _orderSvc.GetAsync(guid);
         }
         else
         {
