@@ -173,7 +173,7 @@ class Payment : IPaymentProvider
         catch (Exception ex)
         {
             _logger.LogError(ex, "Borgun Payment Request - Payment Request Failed");
-            Events.OnError(this, new ErrorEventArgs
+            await Events.OnErrorAsync(this, new ErrorEventArgs
             {
                 Exception = ex,
             });
