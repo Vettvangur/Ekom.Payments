@@ -11,7 +11,7 @@
 
         <!-- Package properties -->
         <PackageId>Ekom.Payments.U10</PackageId>
-        <Version>0.2.1</Version>
+        <Version>0.2.3</Version>
         <Title>Ekom Payments Umbraco 10</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -60,9 +60,9 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
-        <PackageReference Include="Umbraco.Cms.Core" Version="13.7.0" />
-        <PackageReference Include="Umbraco.Cms.Web.BackOffice" Version="13.7.0" />
-        <PackageReference Include="Umbraco.Cms.Web.Website" Version="13.7.0" />
+        <PackageReference Include="Umbraco.Cms.Core" Version="13.8.0" />
+        <PackageReference Include="Umbraco.Cms.Web.BackOffice" Version="13.8.0" />
+        <PackageReference Include="Umbraco.Cms.Web.Website" Version="13.8.0" />
     </ItemGroup>
 
     <ItemGroup>

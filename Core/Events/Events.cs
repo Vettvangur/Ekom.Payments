@@ -1,33 +1,35 @@
 namespace Ekom.Payments;
-
-/// <summary>
-/// Events for all payment providers on success/error.
-/// Supplied by library consumer.
-/// </summary>
 public static class Events
 {
+    public static event Func<object, SuccessEventArgs, Task>? SuccessAsync;
+
+    public static event Func<object, ErrorEventArgs, Task>? ErrorAsync;
+
     /// <summary>
-    /// Raises the success event on successful payment verification
+    /// Raises the success event asynchronously
     /// </summary>
-    internal static void OnSuccess(object sender, SuccessEventArgs successEventArgs)
+    internal static async Task OnSuccessAsync(object sender, SuccessEventArgs successEventArgs)
     {
-        Success?.Invoke(sender, successEventArgs);
+        if (SuccessAsync != null)
+        {
+            foreach (var handler in SuccessAsync.GetInvocationList().Cast<Func<object, SuccessEventArgs, Task>>())
+            {
+                await handler(sender, successEventArgs).ConfigureAwait(false);
+            }
+        }
     }
 
     /// <summary>
-    /// Raises the success event on failed payment verification
+    /// Raises the error event asynchronously
     /// </summary>
-    internal static void OnError(object sender, ErrorEventArgs errorEventArgs)
+    internal static async Task OnErrorAsync(object sender, ErrorEventArgs errorEventArgs)
     {
-        Error?.Invoke(sender, errorEventArgs);
+        if (ErrorAsync != null)
+        {
+            foreach (var handler in ErrorAsync.GetInvocationList().Cast<Func<object, ErrorEventArgs, Task>>())
+            {
+                await handler(sender, errorEventArgs).ConfigureAwait(false);
+            }
+        }
     }
-
-    /// <summary>
-    /// Event fired on successful payment verification
-    /// </summary>
-    public static event EventHandler<SuccessEventArgs>? Success;
-    /// <summary>
-    /// Event fired on payment verification error
-    /// </summary>
-    public static event EventHandler<ErrorEventArgs>? Error;
 }

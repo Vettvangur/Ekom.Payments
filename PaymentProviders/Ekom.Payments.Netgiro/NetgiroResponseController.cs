@@ -1,4 +1,3 @@
-using Ekom.Payments;
 using Ekom.Payments.Helpers;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
@@ -6,10 +5,7 @@ using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using System;
 using System.Globalization;
-using System.Net;
-using System.Threading.Tasks;
 
 namespace Ekom.Payments.Netgiro;
 
@@ -129,7 +125,7 @@ public class NetgiroResponseController : ControllerBase
                     await db.UpdateAsync(order);
                 }
 
-                Events.OnSuccess(this, new SuccessEventArgs
+                await Events.OnSuccessAsync(this, new SuccessEventArgs
                 {
                     OrderStatus = order,
                 });
@@ -139,7 +135,7 @@ public class NetgiroResponseController : ControllerBase
             }
             else
             {
-                Events.OnError(this, new ErrorEventArgs
+                await Events.OnErrorAsync(this, new ErrorEventArgs
                 {
                     OrderStatus = order,
                 });
@@ -154,7 +150,7 @@ public class NetgiroResponseController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Netgiro Payment Response - Failed");
-            Events.OnError(this, new ErrorEventArgs
+            await Events.OnErrorAsync(this, new ErrorEventArgs
             {
                 Exception = ex,
             });

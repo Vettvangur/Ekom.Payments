@@ -7,12 +7,10 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System.Reflection;
 using System.Text;
-using System.Text.RegularExpressions;
 using Umbraco.Cms.Core.Models.PublishedContent;
 using Umbraco.Cms.Core.Web;
 using Umbraco.Cms.Web.Common;
 using Umbraco.Extensions;
-using static Umbraco.Cms.Core.Collections.TopoGraph;
 using static Umbraco.Cms.Core.Constants;
 
 namespace Ekom.Payments.Umb;

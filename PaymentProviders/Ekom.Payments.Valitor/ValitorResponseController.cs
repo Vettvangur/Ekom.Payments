@@ -110,10 +110,11 @@ public class ValitorResponseController : ControllerBase
                             await db.UpdateAsync(order);
                         }
 
-                        Events.OnSuccess(this, new SuccessEventArgs
+                        await Events.OnSuccessAsync(this, new SuccessEventArgs
                         {
                             OrderStatus = order,
                         });
+
                         _logger.LogInformation($"Valitor Payment Response - SUCCESS - Order ID: {order.UniqueId}");
                     }
                     else
@@ -127,7 +128,7 @@ public class ValitorResponseController : ControllerBase
                 {
                     _logger.LogInformation($"Valitor Payment Response - Verification Error - Order ID: {order.UniqueId}");
 
-                    Events.OnError(this, new ErrorEventArgs
+                    await Events.OnErrorAsync(this, new ErrorEventArgs
                     {
                         OrderStatus = order,
                     });
@@ -140,7 +141,7 @@ public class ValitorResponseController : ControllerBase
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Valitor Payment Response - Failed");
-                Events.OnError(this, new ErrorEventArgs
+                await Events.OnErrorAsync(this, new ErrorEventArgs
                 {
                     Exception = ex,
                 });
