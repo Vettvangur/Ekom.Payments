@@ -11,7 +11,7 @@
 
         <!-- Package properties -->
         <PackageId>Ekom.Payments.U10</PackageId>
-        <Version>0.2.3</Version>
+        <Version>0.2.4</Version>
         <Title>Ekom Payments Umbraco 10</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -67,6 +67,5 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\AspNetCore\Ekom.Payments.AspNetCore.csproj" />
-      <ProjectReference Include="..\..\Core\Ekom.Payments.Core.csproj" />
     </ItemGroup>
 </Project>

@@ -191,6 +191,11 @@ class UmbracoService : IUmbracoService
             var prop = typeof(PaymentSettings).GetProperty(nameof(settings.EkomPropertyKeys))!;
             PopulateProperty(ppNode, settings, prop, null!);
         }
+        if (string.IsNullOrEmpty(settings.ConfigurationKey))
+        {
+            var prop = typeof(PaymentSettings).GetProperty(nameof(settings.ConfigurationKey))!;
+            PopulateProperty(ppNode, settings, prop, null!);
+        }
 
         if (!settings.EkomPropertyKeys.ContainsKey(PropertyEditorType.Language)
         || string.IsNullOrEmpty(settings.EkomPropertyKeys[PropertyEditorType.Language]))

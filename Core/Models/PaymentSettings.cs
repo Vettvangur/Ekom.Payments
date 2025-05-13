@@ -45,6 +45,8 @@ public class PaymentSettings : PaymentSettingsBase<PaymentSettings>
     [EkomProperty(PropertyEditorType.Store)]
     public string Currency { get; set; }
 
+    public string ConfigurationKey { get; set; }
+
     /// <summary>
     /// For Ekom properties, controls which key (Store/Language) we read properties from.
     /// Special case during population since properties marked with <see cref="EkomPropertyAttribute"/> depend on this value. <br />
