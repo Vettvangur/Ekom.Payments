@@ -217,6 +217,9 @@ class UmbracoService : IUmbracoService
 
         if (customProperties != null && customPropertyList != null)
         {
+            ppNodeName = string.IsNullOrEmpty(settings.ConfigurationKey) ? ppNodeName
+                : settings.ConfigurationKey;
+
             PopulateProperties(
                 ppNode,
                 ppNodeName,
@@ -373,7 +376,7 @@ class UmbracoService : IUmbracoService
             }
             else
             {
-                var paymentsSection = _configuration.GetSection("Ekom:Payments");
+               var paymentsSection = _configuration.GetSection("Ekom:Payments");
 
                 if (configSection != null && paymentsSection != null)
                 {
