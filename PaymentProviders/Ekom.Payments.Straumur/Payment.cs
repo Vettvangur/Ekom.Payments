@@ -140,6 +140,8 @@ public class Payment : IPaymentProvider
             }
             catch(Exception ex)
             {
+                _logger.LogError(ex, "Straumur Payment Request Error Content", responseContent);
+
                 var error = JsonSerializer.Deserialize<StraumurError>(responseContent);
 
                 _logger.LogError(ex, "Straumur Payment Request Error" , error);
