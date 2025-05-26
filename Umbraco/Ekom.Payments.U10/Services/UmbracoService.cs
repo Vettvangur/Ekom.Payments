@@ -7,12 +7,10 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System.Reflection;
 using System.Text;
-using System.Text.RegularExpressions;
 using Umbraco.Cms.Core.Models.PublishedContent;
 using Umbraco.Cms.Core.Web;
 using Umbraco.Cms.Web.Common;
 using Umbraco.Extensions;
-using static Umbraco.Cms.Core.Collections.TopoGraph;
 using static Umbraco.Cms.Core.Constants;
 
 namespace Ekom.Payments.Umb;
@@ -193,6 +191,11 @@ class UmbracoService : IUmbracoService
             var prop = typeof(PaymentSettings).GetProperty(nameof(settings.EkomPropertyKeys))!;
             PopulateProperty(ppNode, settings, prop, null!);
         }
+        if (string.IsNullOrEmpty(settings.ConfigurationKey))
+        {
+            var prop = typeof(PaymentSettings).GetProperty(nameof(settings.ConfigurationKey))!;
+            PopulateProperty(ppNode, settings, prop, null!);
+        }
 
         if (!settings.EkomPropertyKeys.ContainsKey(PropertyEditorType.Language)
         || string.IsNullOrEmpty(settings.EkomPropertyKeys[PropertyEditorType.Language]))
@@ -214,6 +217,9 @@ class UmbracoService : IUmbracoService
 
         if (customProperties != null && customPropertyList != null)
         {
+            ppNodeName = string.IsNullOrEmpty(settings.ConfigurationKey) ? ppNodeName
+                : settings.ConfigurationKey;
+
             PopulateProperties(
                 ppNode,
                 ppNodeName,
@@ -370,7 +376,7 @@ class UmbracoService : IUmbracoService
             }
             else
             {
-                var paymentsSection = _configuration.GetSection("Ekom:Payments");
+               var paymentsSection = _configuration.GetSection("Ekom:Payments");
 
                 if (configSection != null && paymentsSection != null)
                 {

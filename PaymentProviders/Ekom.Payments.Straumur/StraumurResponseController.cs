@@ -1,4 +1,3 @@
-using Azure;
 using Ekom.Payments.Helpers;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
@@ -112,10 +111,11 @@ public class StraumurResponseController : ControllerBase
                             await db.UpdateAsync(order);
                         }
 
-                        Events.OnSuccess(this, new SuccessEventArgs
+                        await Events.OnSuccessAsync(this, new SuccessEventArgs
                         {
                             OrderStatus = order,
                         });
+
                         _logger.LogInformation($"Straumur Payment Response - SUCCESS - Order ID: {order.UniqueId}");
                     }
                     else
@@ -129,7 +129,7 @@ public class StraumurResponseController : ControllerBase
                 {
                     _logger.LogInformation($"Straumur Payment Response - Verification Error - Order ID: {order.UniqueId}");
 
-                    Events.OnError(this, new ErrorEventArgs
+                    await Events.OnErrorAsync(this, new ErrorEventArgs
                     {
                         OrderStatus = order,
                     });
@@ -142,7 +142,7 @@ public class StraumurResponseController : ControllerBase
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Straumur Payment Response - Failed");
-                Events.OnError(this, new ErrorEventArgs
+                await Events.OnErrorAsync(this, new ErrorEventArgs
                 {
                     Exception = ex,
                 });

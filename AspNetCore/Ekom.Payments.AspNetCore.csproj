@@ -10,7 +10,7 @@
 
         <!-- Package properties -->
         <PackageId>Ekom.Payments.AspNetCore</PackageId>
-        <Version>0.2.1</Version>
+        <Version>0.2.4</Version>
         <Title>Ekom Payments AspNetCore</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>

@@ -134,7 +134,7 @@ public class BorgunResponseController : ControllerBase
                     await db.UpdateAsync(order);
                 }
 
-                Events.OnSuccess(this, new SuccessEventArgs
+                await Events.OnSuccessAsync(this, new SuccessEventArgs
                 {
                     OrderStatus = order,
                 });
@@ -149,7 +149,7 @@ public class BorgunResponseController : ControllerBase
                     borgunResponse.OrderHash,
                     orderhashcheck
                 );
-                Events.OnError(this, new ErrorEventArgs
+                await Events.OnErrorAsync(this, new ErrorEventArgs
                 {
                     OrderStatus = order,
                 });
@@ -160,7 +160,7 @@ public class BorgunResponseController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Borgun Payment Response - Failed");
-            Events.OnError(this, new ErrorEventArgs
+            await Events.OnErrorAsync(this, new ErrorEventArgs
             {
                 Exception = ex,
             });
