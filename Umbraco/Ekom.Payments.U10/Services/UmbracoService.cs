@@ -151,7 +151,9 @@ class UmbracoService : IUmbracoService
                 sb.Append(order.Title + " ");
             }
 
-            settings.OrderName = sb.ToString().TrimEnd(' ');
+            var orderName = sb.ToString().TrimEnd(' ');
+
+            settings.OrderName = orderName.Length > 50 ? orderName.Substring(0, 50) : orderName;
         }
 
         DoPopulatePaymentProviderProperties(settings, ppNodeName, ppNode, customProperties, customPropertyList);

@@ -11,14 +11,14 @@
 
         <!-- Package properties -->
         <PackageId>Ekom.Payments.U10</PackageId>
-        <Version>0.2.4</Version>
+        <Version>0.2.5</Version>
         <Title>Ekom Payments Umbraco 10</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
         <PackageIcon>images\VV_Logo.png</PackageIcon>
         <Description>Ekom Payments - Umbraco E-Commerce solution</Description>
-        <PackageReleaseNotes></PackageReleaseNotes>
+        <PackageReleaseNotes>Maximum 50 char length on Ordername</PackageReleaseNotes>
         <Copyright>Copyright 2022</Copyright>
         <PackageTags></PackageTags>
 
