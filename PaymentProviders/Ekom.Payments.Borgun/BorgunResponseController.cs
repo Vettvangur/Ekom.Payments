@@ -159,7 +159,7 @@ public class BorgunResponseController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Borgun Payment Response - Failed");
+            _logger.LogError(ex, "Borgun Payment Response - Failed. " + borgunResponse.Reference);
             await Events.OnErrorAsync(this, new ErrorEventArgs
             {
                 Exception = ex,
@@ -169,7 +169,7 @@ public class BorgunResponseController : ControllerBase
             {
                 await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
                 {
-                    Subject = "Borgun Payment Response - Failed",
+                    Subject = "Borgun Payment Response - Failed " + borgunResponse.Reference,
                     Body = $"<p>Borgun Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString(),
                     IsBodyHtml = true,
                 });

@@ -141,7 +141,7 @@ public class StraumurResponseController : ControllerBase
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Straumur Payment Response - Failed");
+                _logger.LogError(ex, "Straumur Payment Response - Failed. " + straumurResp.MerchantReference);
                 await Events.OnErrorAsync(this, new ErrorEventArgs
                 {
                     Exception = ex,
@@ -151,7 +151,7 @@ public class StraumurResponseController : ControllerBase
                 {
                     await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
                     {
-                        Subject = "Straumur Payment Response - Failed",
+                        Subject = "Straumur Payment Response - Failed. " + straumurResp.MerchantReference,
                         Body = $"<p>Straumur Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString(),
                         IsBodyHtml = true,
                     });

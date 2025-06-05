@@ -140,7 +140,7 @@ public class ValitorResponseController : ControllerBase
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Valitor Payment Response - Failed");
+                _logger.LogError(ex, "Valitor Payment Response - Failed. " + valitorResp.ReferenceNumber);
                 await Events.OnErrorAsync(this, new ErrorEventArgs
                 {
                     Exception = ex,
@@ -150,7 +150,7 @@ public class ValitorResponseController : ControllerBase
                 {
                     await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
                     {
-                        Subject = "Valitor Payment Response - Failed",
+                        Subject = "Valitor Payment Response - Failed. " + valitorResp.ReferenceNumber,
                         Body = $"<p>Valitor Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString(),
                         IsBodyHtml = true,
                     });

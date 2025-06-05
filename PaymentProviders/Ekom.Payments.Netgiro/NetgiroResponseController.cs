@@ -149,7 +149,8 @@ public class NetgiroResponseController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Netgiro Payment Response - Failed");
+            _logger.LogError(ex, "Netgiro Payment Response - Failed. " + netgiroResponse?.ReferenceNumber);
+
             await Events.OnErrorAsync(this, new ErrorEventArgs
             {
                 Exception = ex,
@@ -159,7 +160,7 @@ public class NetgiroResponseController : ControllerBase
             {
                 await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
                 {
-                    Subject = "Netgiro Payment Response - Failed",
+                    Subject = "Netgiro Payment Response - Failed. " + netgiroResponse?.ReferenceNumber,
                     Body = $"<p>Netgiro Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString(),
                     IsBodyHtml = true,
                 });
