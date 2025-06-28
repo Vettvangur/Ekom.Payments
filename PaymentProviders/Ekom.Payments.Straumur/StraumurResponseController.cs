@@ -64,6 +64,11 @@ public class StraumurResponseController : ControllerBase
                     return BadRequest();
                 }
 
+                if (straumurResp.Success == "false")
+                {
+                    return Ok("Payment not Valid");
+                }
+
                 _logger.LogInformation("Straumur Payment Response - OrderID: " + orderId);
 
                 OrderStatus? order = await _orderService.GetAsync(orderId);
@@ -134,7 +139,7 @@ public class StraumurResponseController : ControllerBase
                         OrderStatus = order,
                     });
 
-                    var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl.ToString(), Request);
+                    var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, Request);
 
                     return StatusCode(500);
                 }
