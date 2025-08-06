@@ -71,6 +71,7 @@ public class AsynchronousExampleResponseController : ControllerBase
 
                 return NotFound();
             }
+
             var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
             var AsynchronousExampleSettings = JsonConvert.DeserializeObject<AsynchronousExampleSettings>(order.EkomPaymentProviderData);
 

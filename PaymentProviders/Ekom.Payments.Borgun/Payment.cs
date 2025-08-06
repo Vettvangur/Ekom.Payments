@@ -90,10 +90,9 @@ class Payment : IPaymentProvider
                 { "merchantid", borgunSettings.MerchantId },
                 { "paymentgatewayid", borgunSettings.PaymentGatewayId.ToString() },
                 { "returnurlsuccess", paymentSettings.SuccessUrl.ToString() },
-                { "returnurlcancel", paymentSettings.CancelUrl.ToString() + "?paymentError=cancelPayment" },
-                { "returnurlerror", paymentSettings.ErrorUrl.ToString() + "?paymentError=errorPayment" },
+                { "returnurlcancel", paymentSettings.CancelUrl.ToString().AddQueryParam("paymentError","cancelPayment" ) },
+                { "returnurlerror", paymentSettings.ErrorUrl.ToString().AddQueryParam("paymentError","errorPayment" ) },
                 { "returnurlsuccessserver", reportUrl.ToString() },
-
                 { "amount", FormatPrice(total) },
                 { "currency", paymentSettings.Currency },
                 { "language", paymentSettings.Language.ToUpper() == "IS-IS" ? "IS" : paymentSettings.Language.ToUpper() }

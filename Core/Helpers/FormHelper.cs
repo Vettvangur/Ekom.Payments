@@ -30,4 +30,13 @@ static class FormHelper
 
         return html.ToString();
     }
+
+    public static string AddQueryParam(this string url, string key, string value)
+    {
+        var builder = new UriBuilder(url);
+        var query = System.Web.HttpUtility.ParseQueryString(builder.Query);
+        query[key] = value;
+        builder.Query = query.ToString();
+        return builder.ToString();
+    }
 }
