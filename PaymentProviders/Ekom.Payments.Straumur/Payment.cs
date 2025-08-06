@@ -3,9 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
-using System.Web;
 
 namespace Ekom.Payments.Straumur;
 
@@ -141,10 +139,6 @@ public class Payment : IPaymentProvider
             catch(Exception ex)
             {
                 _logger.LogError(ex, "Straumur Payment Request Error Content", responseContent);
-
-                var error = JsonSerializer.Deserialize<StraumurError>(responseContent);
-
-                _logger.LogError(ex, "Straumur Payment Request Error" , error);
 
                 throw;
             }

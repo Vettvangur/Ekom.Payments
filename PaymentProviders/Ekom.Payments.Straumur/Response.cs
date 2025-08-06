@@ -1,3 +1,4 @@
+namespace Ekom.Payments.Straumur;
 /// <summary>
 /// Represents the details of a payment transaction.
 /// </summary>
