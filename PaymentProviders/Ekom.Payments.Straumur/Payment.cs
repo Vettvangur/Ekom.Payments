@@ -117,7 +117,7 @@ public class Payment : IPaymentProvider
 
             if (straumurSettings.AddOrderToReference)
             {
-                var referenceParts = new List<string> { orderStatus.UniqueId.ToString() };
+                var referenceParts = new List<string> { reference };
                 referenceParts.AddRange(items.Select(i => i.Name));
                 reference = string.Join(";", referenceParts);
             }
