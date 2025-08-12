@@ -111,6 +111,15 @@ public class Payment : IPaymentProvider
                 items.Add(item);
             }
 
+            var reference = orderStatus.UniqueId.ToString();
+
+            if (straumurSettings.AddOrderToReference)
+            {
+                var referenceParts = new List<string> { reference };
+                referenceParts.AddRange(items.Select(i => i.Name));
+                reference = string.Join(";", referenceParts);
+            }
+
             var request = new PaymentRequest
             {
                 TerminalIdentifier = straumurSettings.TerminalIdenitifer,
