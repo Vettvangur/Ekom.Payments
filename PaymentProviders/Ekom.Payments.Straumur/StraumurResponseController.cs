@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using System.Net;
 
 namespace Ekom.Payments.Straumur;
 
@@ -62,7 +63,21 @@ public class StraumurResponseController : ControllerBase
 
                 if (!Guid.TryParse(straumurResp.MerchantReference, out var orderId))
                 {
-                    return BadRequest();
+                    if(straumurResp.MerchantReference == null)
+                    {
+                        _logger.LogWarning("Straumur Payment Response - MerchantReference is null");
+                        return BadRequest();
+                    }
+
+                    var merchantRefParts = straumurResp.MerchantReference.Split(';');
+                    var rawGuid = merchantRefParts.LastOrDefault();
+
+                    if (!Guid.TryParse(rawGuid, out Guid newOrderId))
+                    {
+                        return BadRequest();
+                    }
+
+                    orderId = newOrderId;
                 }
 
                 _logger.LogInformation("Straumur Payment Response - OrderID: " + orderId);
