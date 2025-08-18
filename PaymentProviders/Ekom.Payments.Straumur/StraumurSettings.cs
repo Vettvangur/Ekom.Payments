@@ -13,6 +13,6 @@ public class StraumurSettings : PaymentSettingsBase<StraumurSettings>
     /// </summary>
     public Uri PaymentPageUrl { get; set; }
 
-    public bool AddOrderToReference { get; set; }
+    public string AddOrderToReference { get; set; }
 
 }
