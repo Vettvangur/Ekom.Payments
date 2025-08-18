@@ -113,7 +113,7 @@ public class Payment : IPaymentProvider
 
             var reference = orderStatus.UniqueId.ToString();
 
-            if (straumurSettings.AddOrderToReference)
+            if (straumurSettings.AddOrderToReference == "true")
             {
                 var referenceParts = new List<string>();
                 referenceParts.AddRange(items.Select(i => i.Name));
@@ -124,7 +124,7 @@ public class Payment : IPaymentProvider
             var request = new PaymentRequest
             {
                 TerminalIdentifier = straumurSettings.TerminalIdenitifer,
-                Reference = orderStatus.UniqueId.ToString(),
+                Reference = reference,
                 Currency = paymentSettings.Currency,
                 Amount = (int)total * 100, // Price is in ISK, Straumur requires two decimal places
                 ReturnUrl = paymentSettings.SuccessUrl.ToString(),
