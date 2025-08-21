@@ -161,7 +161,7 @@ public class NetgiroResponseController : ControllerBase
                 await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
                 {
                     Subject = "Netgiro Payment Response - Failed. " + netgiroResponse?.ReferenceNumber,
-                    Body = $"<p>Netgiro Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString() + "<br><br> " + JsonConvert.SerializeObject(borgunResponse),
+                    Body = $"<p>Netgiro Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString() + "<br><br> " + JsonConvert.SerializeObject(netgiroResponse),
                     IsBodyHtml = true,
                 });
             }

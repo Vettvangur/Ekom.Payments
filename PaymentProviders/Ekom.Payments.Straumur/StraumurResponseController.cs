@@ -172,7 +172,7 @@ public class StraumurResponseController : ControllerBase
                     await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
                     {
                         Subject = "Straumur Payment Response - Failed. " + straumurResp.MerchantReference,
-                        Body = $"<p>Straumur Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString() + "<br><br> " + JsonConvert.SerializeObject(borgunResponse),
+                        Body = $"<p>Straumur Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString() + "<br><br> " + JsonConvert.SerializeObject(straumurResp),
                         IsBodyHtml = true,
                     });
                 }

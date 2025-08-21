@@ -149,7 +149,7 @@ public class AsynchronousExampleResponseController : ControllerBase
                 await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
                 {
                     Subject = "AsynchronousExample Payment Response - Failed",
-                    Body = $"<p>AsynchronousExample Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString() + "<br><br> " + JsonConvert.SerializeObject(borgunResponse),
+                    Body = $"<p>AsynchronousExample Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString() + "<br><br> " + JsonConvert.SerializeObject(AsynchronousExampleResp),
                     IsBodyHtml = true,
                 });
             }
