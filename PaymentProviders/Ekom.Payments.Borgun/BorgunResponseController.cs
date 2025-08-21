@@ -170,7 +170,7 @@ public class BorgunResponseController : ControllerBase
                 await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
                 {
                     Subject = "Borgun Payment Response - Failed " + borgunResponse.Reference,
-                    Body = $"<p>Borgun Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString(),
+                    Body = $"<p>Borgun Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString() + "<br><br> " + JsonConvert.SerializeObject(borgunResponse),
                     IsBodyHtml = true,
                 });
             }
