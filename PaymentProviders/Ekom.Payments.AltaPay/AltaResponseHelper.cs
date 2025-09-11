@@ -1,3 +1,4 @@
+using Ekom.Payments.AltaPay.Model;
 using System.Security.Cryptography;
 using System.Text;
 

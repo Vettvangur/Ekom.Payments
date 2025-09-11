@@ -1,3 +1,4 @@
+using Ekom.Payments.AltaPay.Model;
 using Ekom.Payments.Helpers;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
@@ -5,7 +6,6 @@ using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using System.Net;
 
 namespace Ekom.Payments.AltaPay;
 

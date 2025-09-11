@@ -1,4 +1,4 @@
-namespace Ekom.Payments.AltaPay;
+namespace Ekom.Payments.AltaPay.Model;
 
 /// <summary>
 /// Callbacks to run only for this provider on success/error.

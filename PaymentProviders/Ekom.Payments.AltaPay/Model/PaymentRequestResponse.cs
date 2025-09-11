@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Ekom.Payments.AltaPay
+namespace Ekom.Payments.AltaPay.Model
 {
     /// <summary>
     /// Response data from Straumur Server
