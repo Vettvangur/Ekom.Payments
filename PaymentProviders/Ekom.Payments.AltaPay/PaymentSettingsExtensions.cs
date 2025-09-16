@@ -4,10 +4,10 @@ namespace Ekom.Payments.AltaPay;
 
 public static class PaymentSettingsExtensions
 {
-    public static void SetStraumurSettings(
+    public static void SetAltaPaySettings(
         this PaymentSettings settings, 
-        AltaSettings straumurSettings)
+        AltaSettings altaPaySettings)
     {
-        settings.CustomSettings[typeof(AltaSettings)] = straumurSettings;
+        settings.CustomSettings[typeof(AltaSettings)] = altaPaySettings;
     }
 }

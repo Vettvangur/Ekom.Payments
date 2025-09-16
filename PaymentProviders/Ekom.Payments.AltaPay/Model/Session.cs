@@ -35,6 +35,7 @@ public class SessionCallbacks
     public SessionCallback Failure { get; set; }
     public string Redirect { get; set; }
     public string Notification { get; set; }
+    public string BodyFormat { get; set; } = "JSON";
 }
 
 public class SessionCallback
@@ -47,13 +48,4 @@ public class SessionConfiguration
 {
     public string PaymentType { get; set; } = "PAYMENT";
     public string Language { get; set; }
-}
-
-public class SessionRequest
-{
-    public string OrderId { get; set; }
-    public SessionOrderAmount Amount { get; set; }
-    public List<SessionOrderLine> OrderLines { get; set; }
-    public SessionCallbacks Callbacks { get; set; }
-    public SessionConfiguration Configuration { get; set; }
 }

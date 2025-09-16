@@ -1,3 +1,4 @@
+using Azure.Core;
 using Ekom.Payments.AltaPay.Model;
 using Ekom.Payments.Helpers;
 using Microsoft.AspNetCore.Http;
@@ -65,15 +66,26 @@ public class Payment : IPaymentProvider
                 ? paymentSettings.CustomSettings[typeof(AltaSettings)] as AltaSettings
                 : new AltaSettings();
 
+            // TODO: fjarlægja
+            altaSettings.ApiUserName = "thorvardurb@vettvangur.is";
+            altaSettings.ApiPassword = "testP@ssword123";
+            altaSettings.Terminal = "Nespresso Test CC"; // AltaPay terminal name
+            altaSettings.BaseAddress = new Uri("https://testgateway.altapaysecure.com/merchant/API/");
+            altaSettings.AuthenticationUrl = new Uri("https://testgateway.altapaysecure.com/checkout/v1/api/authenticate");
+            altaSettings.SessionUrl = new Uri("https://testgateway.altapaysecure.com/checkout/v1/api/session");
+
             _uService.PopulatePaymentProviderProperties(
                 paymentSettings,
                 _ppNodeName,
                 altaSettings,
                 AltaSettings.Properties);
 
-            var service = new AltaPaymentService(_httpClientFactory, _logger, altaSettings);
-
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
+
+            var service = new AltaPaymentService(_httpClientFactory, _logger, altaSettings.PaymentConfig);
+            //await service.AuthenticateAsync();
+            //var session = await service.CreateSession();
+            //altaSettings.SessionId = session.SessionId;
 
             // Persist in database and retrieve unique order id
             var orderStatus = await _orderService.InsertAsync(
@@ -84,60 +96,64 @@ public class Payment : IPaymentProvider
                 _httpCtx
             ).ConfigureAwait(false);
 
-            await service.AuthenticateAsync();
-            var sessionRequest = new SessionRequest
-            {
-                OrderId = orderStatus.UniqueId.ToString(),
-            };
-            var session = await service.CreateSession();
-
-            session.Order = new SessionOrder
-            {
-                OrderId = orderStatus.UniqueId.ToString(),
-                Amount = new SessionOrderAmount
-                {
-                    Value = (double)total,
-                    Currency = paymentSettings.Currency
-                },
-                OrderLines = paymentSettings.Orders.Select((lineItem, index) => new SessionOrderLine
-                {
-                    ItemId = (index + 1).ToString(),
-                    Description = lineItem.Title,
-                    Quantity = lineItem.Quantity,
-                    UnitPrice = (int)lineItem.Price,
-                }).ToList(),
-            };
-
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
             paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
 
             var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
             var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
 
-            session.Callbacks = new SessionCallbacks
-            {
-                Success = new SessionCallback
-                {
-                    Value = reportUrl.ToString(),
-                },
-                Failure = new SessionCallback
-                {
-                    Value = cancelUrl.ToString(),
-                },
-                Redirect = paymentSettings.SuccessUrl.ToString(),
-            };
-            session.Configuration = new SessionConfiguration
-            {
-                Language = ParseSupportedLanguages(paymentSettings.Language)
-            };
+            //session.Order = new SessionOrder
+            //{
+            //    OrderId = orderStatus.UniqueId.ToString(),
+            //    Amount = new SessionOrderAmount
+            //    {
+            //        Value = (double)total,
+            //        Currency = paymentSettings.Currency
+            //    },
+            //    OrderLines = paymentSettings.Orders.Select((lineItem, index) => new SessionOrderLine
+            //    {
+            //        ItemId = (index + 1).ToString(),
+            //        Description = lineItem.Title,
+            //        Quantity = lineItem.Quantity,
+            //        UnitPrice = (int)lineItem.Price,
+            //    }).ToList(),
+            //};
+            //session.Callbacks = new SessionCallbacks
+            //{
+            //    Success = new SessionCallback
+            //    {
+            //        Value = paymentSettings.SuccessUrl.ToString(),
+            //    },
+            //    Failure = new SessionCallback
+            //    {
+            //        Value = cancelUrl.ToString(),
+            //    },
+            //    Notification = reportUrl.ToString(),
+            //};
+            //session.Configuration = new SessionConfiguration
+            //{
+            //    Language = ParseSupportedLanguages(paymentSettings.Language)
+            //};
 
-            await service.UpdateSession(session);
+            //await service.UpdateSession(session);
 
             _logger.LogInformation($"Alta Payment Request - Amount: {total} OrderId: {orderStatus.UniqueId}");
 
-            var paymentResponse = await service.PaymentAsync(session.SessionId);
+            var redirectUrl = await service.CreatePaymentRequestAsync(new CreateMerchantPaymentRequest
+            {
+                OrderId = orderStatus.UniqueId.ToString(), // Your internal order id
+                Amount = total,
+                Currency = paymentSettings.Currency,
+                // Return URLs
+                CallbackOk = "https://mysite.com/payment/success", // paymentSettings.SuccessUrl.ToString(),
+                CallbackFail = "https://mysite.com/payment/fail", // cancelUrl.ToString(),
+                CallbackNotification = "https://mysite.com/api/payment/altapay-notify" // reportUrl.ToString()
+            });
+            return FormHelper.CreateRequest([], redirectUrl, "GET");
 
-            return FormHelper.CreateRequest([], paymentResponse.Url, "GET");
+            //var paymentResponse = await service.PaymentAsync(session.SessionId);
+
+            //return FormHelper.CreateRequest([], paymentResponse.Url, "GET");
         }
         catch (Exception ex)
         {
