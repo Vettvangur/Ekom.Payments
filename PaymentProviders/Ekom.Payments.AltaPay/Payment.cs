@@ -4,6 +4,12 @@ using Ekom.Payments.Helpers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
+using System.Net.Http.Headers;
+using System.Net.Http;
+using System.Text;
+using System.Xml.Linq;
+using System;
+using System.Reflection;
 
 namespace Ekom.Payments.AltaPay;
 
@@ -51,7 +57,7 @@ public class Payment : IPaymentProvider
     /// <param name="paymentSettings">Configuration object for PaymentProviders</param>
     public async Task<string> RequestAsync(PaymentSettings paymentSettings)
     {
-       if (paymentSettings == null)
+        if (paymentSettings == null)
             throw new ArgumentNullException(nameof(paymentSettings));
         if (paymentSettings.Orders == null)
             throw new ArgumentNullException(nameof(paymentSettings.Orders));
@@ -66,14 +72,6 @@ public class Payment : IPaymentProvider
                 ? paymentSettings.CustomSettings[typeof(AltaSettings)] as AltaSettings
                 : new AltaSettings();
 
-            // TODO: fjarlægja
-            altaSettings.ApiUserName = "thorvardurb@vettvangur.is";
-            altaSettings.ApiPassword = "testP@ssword123";
-            altaSettings.Terminal = "Nespresso Test CC"; // AltaPay terminal name
-            altaSettings.BaseAddress = new Uri("https://testgateway.altapaysecure.com/merchant/API/");
-            altaSettings.AuthenticationUrl = new Uri("https://testgateway.altapaysecure.com/checkout/v1/api/authenticate");
-            altaSettings.SessionUrl = new Uri("https://testgateway.altapaysecure.com/checkout/v1/api/session");
-
             _uService.PopulatePaymentProviderProperties(
                 paymentSettings,
                 _ppNodeName,
@@ -81,11 +79,6 @@ public class Payment : IPaymentProvider
                 AltaSettings.Properties);
 
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
-
-            var service = new AltaPaymentService(_httpClientFactory, _logger, altaSettings.PaymentConfig);
-            //await service.AuthenticateAsync();
-            //var session = await service.CreateSession();
-            //altaSettings.SessionId = session.SessionId;
 
             // Persist in database and retrieve unique order id
             var orderStatus = await _orderService.InsertAsync(
@@ -96,64 +89,57 @@ public class Payment : IPaymentProvider
                 _httpCtx
             ).ConfigureAwait(false);
 
-            paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
+            // Localhost is not valid for callbacks, override host if needed
+            if (altaSettings.HostOverride != null)
+            {
+                _httpCtx.Request.Host = new HostString(altaSettings.HostOverride);
+            }
 
-            var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
+            var okUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
+            var failUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath + "/fail", UriKind.Relative), _httpCtx.Request);
             var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
-
-            //session.Order = new SessionOrder
-            //{
-            //    OrderId = orderStatus.UniqueId.ToString(),
-            //    Amount = new SessionOrderAmount
-            //    {
-            //        Value = (double)total,
-            //        Currency = paymentSettings.Currency
-            //    },
-            //    OrderLines = paymentSettings.Orders.Select((lineItem, index) => new SessionOrderLine
-            //    {
-            //        ItemId = (index + 1).ToString(),
-            //        Description = lineItem.Title,
-            //        Quantity = lineItem.Quantity,
-            //        UnitPrice = (int)lineItem.Price,
-            //    }).ToList(),
-            //};
-            //session.Callbacks = new SessionCallbacks
-            //{
-            //    Success = new SessionCallback
-            //    {
-            //        Value = paymentSettings.SuccessUrl.ToString(),
-            //    },
-            //    Failure = new SessionCallback
-            //    {
-            //        Value = cancelUrl.ToString(),
-            //    },
-            //    Notification = reportUrl.ToString(),
-            //};
-            //session.Configuration = new SessionConfiguration
-            //{
-            //    Language = ParseSupportedLanguages(paymentSettings.Language)
-            //};
-
-            //await service.UpdateSession(session);
+            altaSettings.PaymentFormUrl = altaSettings.PaymentFormUrl == null ? null : PaymentsUriHelper.EnsureFullUri(altaSettings.PaymentFormUrl, _httpCtx.Request);
 
             _logger.LogInformation($"Alta Payment Request - Amount: {total} OrderId: {orderStatus.UniqueId}");
 
-            var redirectUrl = await service.CreatePaymentRequestAsync(new CreateMerchantPaymentRequest
+            var client = _httpClientFactory.CreateClient();
+            client.BaseAddress = altaSettings.BaseAddress;
+            var byteArray = Encoding.ASCII.GetBytes($"{altaSettings.ApiUserName}:{altaSettings.ApiPassword}");
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(byteArray));
+
+            var form = new Dictionary<string, string>
             {
-                OrderId = orderStatus.UniqueId.ToString(), // Your internal order id
-                Amount = total,
-                Currency = paymentSettings.Currency,
+                { "terminal", altaSettings.Terminal }, // AltaPay terminal name
+                { "shop_orderid", orderStatus.UniqueId.ToString() },
+                { "amount", total.ToString("0.00", CultureInfo.InvariantCulture) },
+                { "currency", paymentSettings.Currency },
                 // Return URLs
-                CallbackOk = "https://mysite.com/payment/success", // paymentSettings.SuccessUrl.ToString(),
-                CallbackFail = "https://mysite.com/payment/fail", // cancelUrl.ToString(),
-                CallbackNotification = "https://mysite.com/api/payment/altapay-notify" // reportUrl.ToString()
-            });
-            return FormHelper.CreateRequest([], redirectUrl, "GET");
+                { "config[callback_ok]", okUrl.ToString() },
+                { "config[callback_fail]", failUrl.ToString() },
+                { "config[callback_notification]", reportUrl.ToString() },
+                // Optional parameters
+                { "language", ParseSupportedLanguages(paymentSettings.Language) },
+            };
+            if (altaSettings.PaymentFormUrl != null)
+            {
+                form["config[callback_form]"] = altaSettings.PaymentFormUrl.ToString();
+            }
+            foreach (var (index, line) in paymentSettings.Orders.Select((order, idx) => new KeyValuePair<int,OrderItem>(idx, order)))
+            {
+                form[$"orderLines[{index}][description]"] = line.Title;
+                form[$"orderLines[{index}][itemId]"] = (index + 1).ToString();
+                form[$"orderLines[{index}][quantity]"] = line.Quantity.ToString();
+                form[$"orderLines[{index}][unitPrice]"] = line.Price.ToString("0.00", CultureInfo.InvariantCulture);
+            }
 
-            //var paymentResponse = await service.PaymentAsync(session.SessionId);
+            using var content = new FormUrlEncodedContent(form);
+            var response = await client.PostAsync("createPaymentRequest", content);
+            response.EnsureSuccessStatusCode();
+            var xml = XDocument.Parse(await response.Content.ReadAsStringAsync());
+            // Extract the payment URL (redirect the customer here)
+            var url = xml.Descendants("Url").FirstOrDefault()?.Value;
 
-            //return FormHelper.CreateRequest([], paymentResponse.Url, "GET");
+            return FormHelper.CreateRequest([], url, "GET");
         }
         catch (Exception ex)
         {
