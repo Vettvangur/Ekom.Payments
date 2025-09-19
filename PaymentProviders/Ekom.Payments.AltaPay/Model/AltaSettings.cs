@@ -10,5 +10,5 @@ public class AltaSettings : PaymentSettingsBase<AltaSettings>
 
     public Uri BaseAddress { get; set; }
     public Uri? PaymentFormUrl { get; set; }
-    public string HostOverride { get; set; }
+    public string? HostOverride { get; set; }
 }
