@@ -15,7 +15,7 @@
         <PackageIcon>images\VV_Logo.png</PackageIcon>
         <Description>Ekom Payments AltaPay - Vettvangur E-Commerce solution</Description>
         <PackageReleaseNotes></PackageReleaseNotes>
-        <Copyright>Copyright 2022</Copyright>
+        <Copyright>Copyright 2025</Copyright>
         <PackageTags></PackageTags>
 
         <!-- Optional: Publish the repository URL in the built .nupkg (in the NuSpec <Repository> element) -->

@@ -35,14 +35,14 @@ public class AltaResponseController : ControllerBase
         IOrderService orderService,
         IDatabaseFactory dbFac,
         IMailService mailSvc,
-        HttpContext httpCtx)
+        IHttpContextAccessor httpContext)
     {
         _logger = logger;
         _settings = settings;
         _orderService = orderService;
         _dbFac = dbFac;
         _mailSvc = mailSvc;
-        _httpCtx = httpCtx;
+        _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
     }
 
     /// <summary>
