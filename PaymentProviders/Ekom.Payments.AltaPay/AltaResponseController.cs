@@ -1,6 +1,5 @@
 using Ekom.Payments.AltaPay.Model;
 using Ekom.Payments.Helpers;
-using Ekom.Payments.Services;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
@@ -26,7 +25,6 @@ public class AltaResponseController : ControllerBase
     readonly IDatabaseFactory _dbFac;
     readonly IMailService _mailSvc;
     readonly HttpContext _httpCtx;
-    readonly IRenderViewService _renderViewSvc;
 
     /// <summary>
     /// ctor
@@ -37,8 +35,7 @@ public class AltaResponseController : ControllerBase
         IOrderService orderService,
         IDatabaseFactory dbFac,
         IMailService mailSvc,
-        IHttpContextAccessor httpContext,
-        IRenderViewService renderViewSvc)
+        IHttpContextAccessor httpContext)
     {
         _logger = logger;
         _settings = settings;
@@ -46,7 +43,6 @@ public class AltaResponseController : ControllerBase
         _dbFac = dbFac;
         _mailSvc = mailSvc;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
-        _renderViewSvc = renderViewSvc;
     }
 
     /// <summary>
@@ -291,88 +287,6 @@ public class AltaResponseController : ControllerBase
                 {
                     Subject = "Alta Payment Fail Response - Failed. " + transaction?.ShopOrderId,
                     Body = $"<p>Alta Payment Fail Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString() + "<br><br> " + JsonConvert.SerializeObject(model),
-                    IsBodyHtml = true,
-                });
-            }
-
-            throw;
-        }
-    }
-
-    [ApiExplorerSettings(IgnoreApi = true)]
-    [HttpGet, HttpPost]
-    [Route("CallbackForm")]
-    public async Task<string?> GetCallbackForm(CallbackFromRequest model)
-    {
-        _logger.LogInformation("Alta Payment CallbackForm Response - Start");
-
-        _logger.LogDebug(JsonConvert.SerializeObject(model));
-
-        if (model == null || !ModelState.IsValid)
-        {
-            _logger.LogDebug(JsonConvert.SerializeObject(ModelState));
-            return null;
-        }
-
-        //var shopOrderId = Request.Form["shop_orderid"].FirstOrDefault() ?? Request.Query["shop_orderid"].FirstOrDefault();
-        var shopOrderId = model.OrderId;
-
-        _logger.LogDebug(JsonConvert.SerializeObject(shopOrderId));
-
-        try
-        {
-            if (!Guid.TryParse(shopOrderId, out var orderId))
-            {
-                if (shopOrderId == null)
-                {
-                    _logger.LogWarning("Alta Payment CallbackForm Response - ShopOrderId is null");
-                    return null;
-                }
-
-                var merchantRefParts = shopOrderId.Split(';');
-                var rawGuid = merchantRefParts.LastOrDefault();
-
-                if (!Guid.TryParse(rawGuid, out Guid newOrderId))
-                {
-                    return null;
-                }
-
-                orderId = newOrderId;
-            }
-
-            _logger.LogInformation("Alta Payment CallbackForm Response - OrderID: " + orderId);
-
-            OrderStatus? order = await _orderService.GetAsync(orderId);
-            if (order == null)
-            {
-                _logger.LogWarning("Alta Payment CallbackForm Response - Unable to find order {OrderId}", orderId);
-
-                return null;
-            }
-
-            var altaSettings = JsonConvert.DeserializeObject<AltaSettings>(order.EkomPaymentProviderData);
-            if (string.IsNullOrEmpty(altaSettings?.CustomPaymentFormView))
-            {
-                _logger.LogWarning("Alta Payment CallbackForm Response - No CustomPaymentFormView configured in AltaSettings for order {OrderId}", orderId);
-                return null;
-            }
-
-            return await _renderViewSvc.RenderView(altaSettings.CustomPaymentFormView, model);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Alta Payment CallbackForm Response - Failed. " + shopOrderId);
-            await Model.Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
-
-            if (_settings.SendEmailAlerts)
-            {
-                await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
-                {
-                    Subject = "Alta Payment Fail Response - Failed. " + shopOrderId,
-                    Body = $"<p>Alta Payment Fail Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString() + "<br><br> " + shopOrderId,
                     IsBodyHtml = true,
                 });
             }

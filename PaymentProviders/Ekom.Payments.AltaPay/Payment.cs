@@ -94,7 +94,7 @@ public class Payment : IPaymentProvider
             var okUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
             var failUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath + "/fail", UriKind.Relative), _httpCtx.Request);
             var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
-            var formUrl = altaSettings.CustomPaymentFormView == null ? null : PaymentsUriHelper.EnsureFullUri(new Uri(reportPath + "/CallbackForm", UriKind.Relative), _httpCtx.Request);
+            var formUrl = altaSettings.PaymentFormUrl == null ? null : PaymentsUriHelper.EnsureFullUri(altaSettings.PaymentFormUrl, _httpCtx.Request);
 
             _logger.LogInformation($"Alta Payment Request - Amount: {total} OrderId: {orderStatus.UniqueId}");
 
