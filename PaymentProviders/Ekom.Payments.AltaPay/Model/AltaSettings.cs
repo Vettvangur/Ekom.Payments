@@ -7,6 +7,6 @@ public class AltaSettings : PaymentSettingsBase<AltaSettings>
     public string Terminal { get; set; }
     public Uri BaseAddress { get; set; }
     public string? HostOverride { get; set; }
-    public string? CustomPaymentFormView { get; set; }
+    public Uri? PaymentFormUrl { get; set; }
     public string? CustomerInformationSharedSecret { get; set; }
 }
