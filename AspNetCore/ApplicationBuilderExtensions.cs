@@ -1,3 +1,4 @@
+using Ekom.Payments.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,7 @@ static class ApplicationBuilderExtensions
         services.AddTransient<EnsureTablesExist>();
         services.AddTransient<IOrderService, OrderService>();
         services.AddTransient<EkomPayments>();
+        services.AddTransient<IRenderViewService, RenderViewService>();
 
         var cmsSection = configuration.GetSection("Umbraco:CMS");
         var smtpSection = cmsSection.GetSection("Global:Smtp");
