@@ -1,19 +1,15 @@
-using Azure.Core;
 using Ekom.Payments.AltaPay.Model;
 using Ekom.Payments.Helpers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net.Http.Headers;
-using System.Net.Http;
 using System.Text;
 using System.Xml.Linq;
-using System;
-using System.Reflection;
 
 namespace Ekom.Payments.AltaPay;
 
-/// <summary>
+/// <summary>s
 /// Initiate a payment request with Alta
 /// </summary>
 public class Payment : IPaymentProvider
@@ -98,7 +94,7 @@ public class Payment : IPaymentProvider
             var okUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
             var failUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath + "/fail", UriKind.Relative), _httpCtx.Request);
             var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
-            altaSettings.PaymentFormUrl = altaSettings.PaymentFormUrl == null ? null : PaymentsUriHelper.EnsureFullUri(altaSettings.PaymentFormUrl, _httpCtx.Request);
+            var formUrl = altaSettings.CustomPaymentFormView == null ? null : PaymentsUriHelper.EnsureFullUri(new Uri(reportPath + "/CallbackForm", UriKind.Relative), _httpCtx.Request);
 
             _logger.LogInformation($"Alta Payment Request - Amount: {total} OrderId: {orderStatus.UniqueId}");
 
@@ -120,9 +116,9 @@ public class Payment : IPaymentProvider
                 // Optional parameters
                 { "language", ParseSupportedLanguages(paymentSettings.Language) },
             };
-            if (altaSettings.PaymentFormUrl != null)
+            if (formUrl != null)
             {
-                form["config[callback_form]"] = altaSettings.PaymentFormUrl.ToString();
+                form["config[callback_form]"] = formUrl.ToString();
             }
             foreach (var (index, line) in paymentSettings.Orders.Select((order, idx) => new KeyValuePair<int,OrderItem>(idx, order)))
             {

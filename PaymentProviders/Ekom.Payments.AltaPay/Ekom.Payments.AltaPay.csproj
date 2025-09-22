@@ -51,6 +51,7 @@
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
+        <PackageReference Include="XAct.Core.PCL" Version="0.0.5014" />
     </ItemGroup>
 
     <ItemGroup>
