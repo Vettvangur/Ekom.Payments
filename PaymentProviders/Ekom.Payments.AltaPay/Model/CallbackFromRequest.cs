@@ -10,7 +10,7 @@ public class CallbackFromRequest
 {
     [FromForm(Name = "shop_orderid")]
     [FromQuery(Name = "shop_orderid")]
-    public required string OrderId { get; set; }
+    public string OrderId { get; set; } = "";
 
     public decimal Amount { get; set; }
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Xml.Linq;
 
 namespace Ekom.Payments.AltaPay;
@@ -131,9 +132,15 @@ public class Payment : IPaymentProvider
             using var content = new FormUrlEncodedContent(form);
             var response = await client.PostAsync("createPaymentRequest", content);
             response.EnsureSuccessStatusCode();
-            var xml = XDocument.Parse(await response.Content.ReadAsStringAsync());
+            var contentString = await response.Content.ReadAsStringAsync();
+            var xml = XDocument.Parse(contentString);
             // Extract the payment URL (redirect the customer here)
             var url = xml.Descendants("Url").FirstOrDefault()?.Value;
+
+            if (string.IsNullOrEmpty(url))
+            {
+                _logger.LogInformation($"Alta Payment Request - Error creating Payment - Request: {JsonSerializer.Serialize(form)} - Response: {contentString}");
+            }
 
             return FormHelper.CreateRequest([], url, "GET");
         }
