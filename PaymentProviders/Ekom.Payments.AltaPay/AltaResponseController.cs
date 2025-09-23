@@ -6,8 +6,6 @@ using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using System.Xml;
-using System.Xml.Serialization;
 
 namespace Ekom.Payments.AltaPay;
 
@@ -52,11 +50,11 @@ public class AltaResponseController : ControllerBase
     [ApiExplorerSettings(IgnoreApi = true)]
     [HttpGet, HttpPost]
     [Route("")]
-    public async Task<IActionResult> Post()
+    public async Task<IActionResult> Post(PaymentResponse response)
     {
         _logger.LogInformation("Alta Payment Response - Start");
 
-        var model = GetFormXml(Request);
+        var model = response.GetApiResponse();
 
         _logger.LogDebug(JsonConvert.SerializeObject(model));
 
@@ -216,11 +214,11 @@ public class AltaResponseController : ControllerBase
     [ApiExplorerSettings(IgnoreApi = true)]
     [HttpGet, HttpPost]
     [Route("fail")]
-    public async Task<IActionResult> Fail()
+    public async Task<IActionResult> Fail(PaymentResponse response)
     {
         _logger.LogInformation("Alta Payment Fail Response - Start");
 
-        var model = GetFormXml(Request);
+        var model = response.GetApiResponse();
 
         _logger.LogDebug(JsonConvert.SerializeObject(model));
 
@@ -292,26 +290,6 @@ public class AltaResponseController : ControllerBase
             }
 
             throw;
-        }
-    }
-
-    private APIResponse? GetFormXml(HttpRequest request)
-    {
-        string xmlData = request.Form["xml"].ToString().Replace("+", " ");
-        var serializer = new XmlSerializer(typeof(APIResponse));
-        APIResponse model;
-        try
-        {
-            using (var stringReader = new StringReader(xmlData))
-            {
-                using var xmlReader = XmlReader.Create(stringReader);
-                return (APIResponse)serializer.Deserialize(xmlReader);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, $"Alta Payment Response - Error deserializing XML - {xmlData}");
-            return null;
         }
     }
 }
