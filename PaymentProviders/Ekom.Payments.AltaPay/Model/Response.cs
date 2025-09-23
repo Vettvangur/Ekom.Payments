@@ -1,7 +1,60 @@
+using Microsoft.AspNetCore.Mvc;
 using System.Xml;
 using System.Xml.Serialization;
 
 namespace Ekom.Payments.AltaPay.Model;
+
+public class PaymentResponse
+{
+    [FromForm(Name = "shop_orderid")]
+    public Guid ShopOrderId { get; set; }
+    public int Currency { get; set; }
+    public string Type { get; set; }
+
+    [FromForm(Name = "embedded_window")]
+    public int EmbeddedWindow { get; set; }
+    public decimal Amount { get; set; }
+
+    [FromForm(Name = "transaction_id")]
+    public long TransactionId { get; set; }
+
+    [FromForm(Name = "payment_id")]
+    public Guid PaymentId { get; set; }
+    public string Nature { get; set; }
+
+    [FromForm(Name = "require_capture")]
+    public bool RequireCapture { get; set; }
+
+    [FromForm(Name = "payment_status")]
+    public string PaymentStatus { get; set; }
+
+    [FromForm(Name = "masked_credit_card")]
+    public string MaskedCreditCard { get; set; }
+
+    [FromForm(Name = "blacklist_token")]
+    public string BlacklistToken { get; set; }
+
+    [FromForm(Name = "credit_card_token")]
+    public string CreditCardToken { get; set; }
+    public string Status { get; set; }
+    public string Xml { get; set; }
+    public string Checksum { get; set; }
+
+    public APIResponse? GetApiResponse()
+    {
+        var serializer = new XmlSerializer(typeof(APIResponse));
+        try
+        {
+            using var stringReader = new StringReader(Xml);
+            using var xmlReader = XmlReader.Create(stringReader);
+            return (APIResponse)serializer.Deserialize(xmlReader);
+        }
+        catch (Exception ex)
+        {
+            return null;
+        }
+    }
+}
 
 [XmlRoot("APIResponse")]
 public class APIResponse
