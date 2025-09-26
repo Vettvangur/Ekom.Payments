@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Net;
 using System.Xml;
 using System.Xml.Serialization;
 
@@ -9,7 +10,7 @@ public class PaymentResponse
     [FromForm(Name = "shop_orderid")]
     public Guid ShopOrderId { get; set; }
     public int Currency { get; set; }
-    public string Type { get; set; }
+    public string? Type { get; set; }
 
     [FromForm(Name = "embedded_window")]
     public int EmbeddedWindow { get; set; }
@@ -20,36 +21,42 @@ public class PaymentResponse
 
     [FromForm(Name = "payment_id")]
     public Guid PaymentId { get; set; }
-    public string Nature { get; set; }
+    public string? Nature { get; set; }
 
     [FromForm(Name = "require_capture")]
     public bool RequireCapture { get; set; }
 
     [FromForm(Name = "payment_status")]
-    public string PaymentStatus { get; set; }
+    public string? PaymentStatus { get; set; }
 
     [FromForm(Name = "masked_credit_card")]
-    public string MaskedCreditCard { get; set; }
+    public string? MaskedCreditCard { get; set; }
 
     [FromForm(Name = "blacklist_token")]
-    public string BlacklistToken { get; set; }
+    public string? BlacklistToken { get; set; }
 
     [FromForm(Name = "credit_card_token")]
-    public string CreditCardToken { get; set; }
-    public string Status { get; set; }
-    public string Xml { get; set; }
-    public string Checksum { get; set; }
+    public string? CreditCardToken { get; set; }
+    public string? Status { get; set; }
+    public string? Xml { get; set; }
+    public string? Checksum { get; set; }
 
     public APIResponse? GetApiResponse()
     {
+        if (Xml == null)
+        {
+            return null;
+        }
+
         var serializer = new XmlSerializer(typeof(APIResponse));
         try
         {
-            using var stringReader = new StringReader(Xml);
+            var decodedXml = WebUtility.UrlDecode(Xml);
+            using var stringReader = new StringReader(decodedXml);
             using var xmlReader = XmlReader.Create(stringReader);
-            return (APIResponse)serializer.Deserialize(xmlReader);
+            return (APIResponse?)serializer.Deserialize(xmlReader);
         }
-        catch (Exception ex)
+        catch
         {
             return null;
         }
@@ -120,6 +127,9 @@ public class Transaction
 
     [XmlElement("RefundedAmount")]
     public decimal RefundedAmount { get; set; }
+
+    [XmlElement("MerchantCurrency")]
+    public int MerchantCurrency { get; set; }
 
     [XmlElement("MerchantCurrencyAlpha")]
     public string MerchantCurrencyAlpha { get; set; }

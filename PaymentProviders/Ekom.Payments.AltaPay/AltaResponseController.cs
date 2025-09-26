@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using System.Globalization;
 
 namespace Ekom.Payments.AltaPay;
 
@@ -112,21 +113,20 @@ public class AltaResponseController : ControllerBase
             {
                 _logger.LogInformation("Alta Payment Response - Validationg checksum");
 
-                var incomingChecksum = Request.Form["checksum"].ToString();
-                if (string.IsNullOrEmpty(incomingChecksum))
+                if (string.IsNullOrEmpty(response.Checksum))
                 {
                     _logger.LogWarning("Alta Payment Response - Expected incoming checksum not given.");
                 }
 
                 var calculatedChecksum = AltaResponseHelper.CalculateChecksum(new ChecksumCalculationRequest
                 {
-                    Amount = order.Amount.ToString(),
-                    Currency = transaction.MerchantCurrencyAlpha,
+                    Amount = order.Amount.ToString("F2", CultureInfo.InvariantCulture),
+                    Currency = transaction.MerchantCurrency.ToString(),
                     OrderId = orderId.ToString(),
                     Secret = altaSettings.CustomerInformationSharedSecret
                 });
 
-                checksumValid = incomingChecksum == calculatedChecksum;
+                checksumValid = response.Checksum == calculatedChecksum;
                 _logger.LogInformation($"Alta Payment Response - Checksum is {(checksumValid ? "valid" : "invalid")}");
             }
 
