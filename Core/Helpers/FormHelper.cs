@@ -19,7 +19,7 @@ static class FormHelper
 
         html.Append("</form>");
 
-        html.Append("<script>(function(){ document.getElementById(\"payform\").submit(); }())</script>");
+        html.Append("<script>(function(){ document.getElementById(\"payform2\").submit(); }())</script>");
 
         return html.ToString();
     }
