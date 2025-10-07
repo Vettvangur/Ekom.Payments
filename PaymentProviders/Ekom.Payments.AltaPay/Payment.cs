@@ -117,10 +117,12 @@ public class Payment : IPaymentProvider
                 // Optional parameters
                 { "language", ParseSupportedLanguages(paymentSettings.Language) },
             };
+
             if (formUrl != null)
             {
                 form["config[callback_form]"] = formUrl.ToString();
             }
+
             foreach (var (index, line) in paymentSettings.Orders.Select((order, idx) => new KeyValuePair<int,OrderItem>(idx, order)))
             {
                 form[$"orderLines[{index}][description]"] = line.Title;
@@ -142,7 +144,7 @@ public class Payment : IPaymentProvider
                 _logger.LogInformation($"Alta Payment Request - Error creating Payment - Request: {JsonSerializer.Serialize(form)} - Response: {contentString}");
             }
 
-            return FormHelper.CreateRequest([], url, "GET");
+            return FormHelper.Redirect(url);
         }
         catch (Exception ex)
         {
