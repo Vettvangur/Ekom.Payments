@@ -134,7 +134,7 @@ public class AltaResponseController : ControllerBase
             {
                 _logger.LogInformation($"Alta Payment Response - Verification Error - Order ID: {order.UniqueId}");
 
-                await Model.Events.OnErrorAsync(this, new ErrorEventArgs
+                await Events.OnErrorAsync(this, new ErrorEventArgs
                 {
                     OrderStatus = order,
                 });
@@ -174,7 +174,7 @@ public class AltaResponseController : ControllerBase
                     await db.UpdateAsync(order);
                 }
 
-                await Model.Events.OnSuccessAsync(this, new SuccessEventArgs
+                await Events.OnSuccessAsync(this, new SuccessEventArgs
                 {
                     OrderStatus = order,
                 });
@@ -192,7 +192,7 @@ public class AltaResponseController : ControllerBase
         {
             var transaction = model.Body.Transactions.FirstOrDefault();
             _logger.LogError(ex, "Alta Payment Response - Failed. " + transaction?.ShopOrderId);
-            await Model.Events.OnErrorAsync(this, new ErrorEventArgs
+            await Events.OnErrorAsync(this, new ErrorEventArgs
             {
                 Exception = ex,
             });
@@ -274,7 +274,7 @@ public class AltaResponseController : ControllerBase
         {
             var transaction = model.Body.Transactions.FirstOrDefault();
             _logger.LogError(ex, "Alta Payment Fail Response - Failed. " + transaction?.ShopOrderId);
-            await Model.Events.OnErrorAsync(this, new ErrorEventArgs
+            await Events.OnErrorAsync(this, new ErrorEventArgs
             {
                 Exception = ex,
             });
@@ -291,5 +291,23 @@ public class AltaResponseController : ControllerBase
 
             throw;
         }
+    }
+
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [HttpGet, HttpPost]
+    [Route("callback")]
+    public async Task<IActionResult> CallbackFormAsync(CallbackFromRequest request)
+    {
+        var template = "";
+
+        var eventArgs = new CallbackUrlEventArgs()
+        {
+            Request = request,
+            Template = template
+        };
+
+        await Events.OnCallbackUrlAsync(this, eventArgs);
+
+        return Ok(eventArgs.Template);
     }
 }
