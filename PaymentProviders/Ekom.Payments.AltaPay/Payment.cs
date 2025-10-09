@@ -118,7 +118,7 @@ public class Payment : IPaymentProvider
                 { "language", ParseSupportedLanguages(paymentSettings.Language) },
             };
 
-            if (formUrl != null)
+            if (!string.IsNullOrWhiteSpace(formUrl.ToString()))
             {
                 form["config[callback_form]"] = formUrl.ToString();
             }
