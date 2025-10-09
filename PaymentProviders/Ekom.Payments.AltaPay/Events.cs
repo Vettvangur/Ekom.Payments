@@ -1,4 +1,6 @@
-namespace Ekom.Payments.AltaPay.Model;
+using Ekom.Payments.AltaPay.Model;
+
+namespace Ekom.Payments.AltaPay;
 
 /// <summary>
 /// Callbacks to run only for this provider on success/error.
@@ -34,4 +36,22 @@ public static class Events
     /// Event fired on payment verification error
     /// </summary>
     public static event EventHandler<ErrorEventArgs>? Error;
+
+
+    public delegate Task AsyncEventHandler<in TEventArgs>(object? sender, TEventArgs e)
+    where TEventArgs : EventArgs;
+
+    public static event AsyncEventHandler<CallbackUrlEventArgs>? CallbackUrl;
+
+    internal static async Task OnCallbackUrlAsync(object? sender, CallbackUrlEventArgs e)
+    {
+        var handlers = CallbackUrl;
+        if (handlers is null) return;
+
+        // Call every subscriber and await completion (in parallel)
+        var calls = handlers.GetInvocationList()
+            .Cast<AsyncEventHandler<CallbackUrlEventArgs>>()
+            .Select(h => h(sender, e));
+        await Task.WhenAll(calls);
+    }
 }
