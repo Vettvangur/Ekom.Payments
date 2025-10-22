@@ -34,6 +34,8 @@ public class PaymentRequest
 
     public string Culture { get; set; }
 
+    public string RecurringProcessingModel { get; set; }
+
     public List<Item> Items { get; set; }
 }
 
