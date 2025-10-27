@@ -45,11 +45,6 @@ public class Response
     public string HmacSignature { get; set; }
 
     /// <summary>
-    /// A payment token you can use for future payments through API. You will only get this field through the Tokenization event.
-    /// </summary>
-    public string? Token { get; set; }
-
-    /// <summary>
     /// An object for the additional details included in the event.
     /// </summary>
     public PaymentEventDetails AdditionalData { get; set; }
