@@ -88,7 +88,7 @@ public class Payment : IPaymentProvider
                 straumurSettings,
                 paymentSettings.OrderUniqueId.ToString(),
                 _httpCtx
-            ).ConfigureAwait(false);
+            ).ConfigureAwait(false);    
 
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
             paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
@@ -131,6 +131,35 @@ public class Payment : IPaymentProvider
                 Culture = ParseSupportedLanguages(paymentSettings.Language),
                 Items = items
             };
+
+            if(straumurSettings.RecurringProcessingModel == RecurringProccessingModel.CardOnFile)
+            {
+                request = new PaymentRequest()
+                {
+                    TerminalIdentifier = straumurSettings.TerminalIdenitifer,
+                    Reference = reference,
+                    Currency = paymentSettings.Currency,
+                    Amount = 0,
+                    ReturnUrl = paymentSettings.SuccessUrl.ToString(),
+                    Culture = ParseSupportedLanguages(paymentSettings.Language),
+                    Items = items,
+                    RecurringProcessingModel = RecurringProccessingModel.CardOnFile.ToString()
+                };
+            }
+            else if(straumurSettings.RecurringProcessingModel == RecurringProccessingModel.Subscription)
+            {
+                request = new PaymentRequest()
+                {
+                    TerminalIdentifier = straumurSettings.TerminalIdenitifer,
+                    Reference = reference,
+                    Currency = paymentSettings.Currency,
+                    Amount = (int)total * 100,
+                    ReturnUrl = paymentSettings.SuccessUrl.ToString(),
+                    Culture = ParseSupportedLanguages(paymentSettings.Language),
+                    Items = items,
+                    RecurringProcessingModel = RecurringProccessingModel.Subscription.ToString()
+                };
+            }
 
             _logger.LogInformation($"Straumur Payment Request - Amount: {total} OrderId: {orderStatus.UniqueId}");
 
