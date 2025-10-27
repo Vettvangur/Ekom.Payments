@@ -62,7 +62,7 @@ public class StraumurResponseController : ControllerBase
 
                 if (!Guid.TryParse(straumurResp.MerchantReference, out var orderId))
                 {
-                    if(straumurResp.MerchantReference == null)
+                    if (straumurResp.MerchantReference == null)
                     {
                         _logger.LogWarning("Straumur Payment Response - MerchantReference is null");
                         return BadRequest();
@@ -95,6 +95,14 @@ public class StraumurResponseController : ControllerBase
                 }
                 var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
                 var straumurSettings = JsonConvert.DeserializeObject<StraumurSettings>(order.EkomPaymentProviderData);
+
+                bool isRecurringPayment = straumurSettings.RecurringProcessingModel == RecurringProccessingModel.Subscription || straumurSettings.RecurringProcessingModel == RecurringProccessingModel.CardOnFile;
+
+                if (isRecurringPayment && straumurResp.AdditionalData.EventType == PaymentEvent.Authorization)
+                {
+                    _logger.LogInformation("Straumur Payment Response - Payment Authorizated");
+                    return Ok("Payment Authorizated");
+                }
 
                 var hmacKey = straumurSettings.HmacKey;
                 var calculatedSignature = StraumurResponseHelper.GetHmacSignature(hmacKey, straumurResp);
