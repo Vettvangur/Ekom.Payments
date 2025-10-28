@@ -7,7 +7,7 @@
 
         <!-- Package properties -->
         <PackageId>Ekom.Payments.Straumur</PackageId>
-        <Version>0.0.1</Version>
+        <Version>0.2.31</Version>
         <Title>Ekom Payments Straumur</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
