@@ -97,7 +97,7 @@ public class Payment : IPaymentProvider
             var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
             var formUrl = altaSettings.PaymentFormUrl == null ? null : PaymentsUriHelper.EnsureFullUri(new Uri(altaSettings.PaymentFormUrl, UriKind.Relative), _httpCtx.Request);
 
-            _logger.LogInformation($"Alta Payment Request - Amount: {total} OrderId: {orderStatus.UniqueId}");
+            _logger.LogInformation($"Alta Payment Request - Amount: {total} OrderId: {paymentSettings.OrderUniqueId}");
 
             var client = _httpClientFactory.CreateClient();
             client.BaseAddress = altaSettings.BaseAddress;
@@ -107,20 +107,20 @@ public class Payment : IPaymentProvider
             var form = new Dictionary<string, string>
             {
                 { "terminal", altaSettings.Terminal }, // AltaPay terminal name
-                { "shop_orderid", orderStatus.UniqueId.ToString() },
+                { "shop_orderid", paymentSettings.OrderUniqueId.ToString() },
                 { "amount", total.ToString("0.00", CultureInfo.InvariantCulture) },
                 { "currency", paymentSettings.Currency },
                 // Return URLs
-                { "config[callback_ok]", okUrl.ToString() },
-                { "config[callback_fail]", failUrl.ToString() },
-                { "config[callback_notification]", reportUrl.ToString() },
+                { "config[callback_ok]", okUrl.ToString().Replace("//ekom","/ekom", StringComparison.InvariantCultureIgnoreCase) },
+                { "config[callback_fail]", failUrl.ToString().Replace("//ekom","/ekom", StringComparison.InvariantCultureIgnoreCase) },
+                { "config[callback_notification]", reportUrl.ToString().Replace("//ekom","/ekom", StringComparison.InvariantCultureIgnoreCase) },
                 // Optional parameters
                 { "language", ParseSupportedLanguages(paymentSettings.Language) },
             };
 
             if (!string.IsNullOrWhiteSpace(formUrl.ToString()))
             {
-                form["config[callback_form]"] = formUrl.ToString();
+                form["config[callback_form]"] = formUrl.ToString().Replace("//ekom", "/ekom", StringComparison.InvariantCultureIgnoreCase);
             }
 
             foreach (var (index, line) in paymentSettings.Orders.Select((order, idx) => new KeyValuePair<int,OrderItem>(idx, order)))
@@ -141,7 +141,7 @@ public class Payment : IPaymentProvider
 
             if (string.IsNullOrEmpty(url))
             {
-                _logger.LogInformation($"Alta Payment Request - Error creating Payment - Request: {JsonSerializer.Serialize(form)} - Response: {contentString}");
+                _logger.LogError($"Alta Payment Request - Error creating Payment - Request: {JsonSerializer.Serialize(form)} - Response: {contentString} OrderId: {paymentSettings.OrderUniqueId}");
             }
 
             return FormHelper.Redirect(url);
