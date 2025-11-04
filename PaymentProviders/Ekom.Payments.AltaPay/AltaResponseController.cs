@@ -97,13 +97,21 @@ public class AltaResponseController : ControllerBase
 
             _logger.LogInformation("Alta Payment Response - OrderID: " + orderId);
 
-            OrderStatus? order = await _orderService.GetAsync(orderId);
+            OrderStatus? order = await _orderService.GetByCustomAsync(orderId.ToString());
+
             if (order == null)
             {
                 _logger.LogWarning("Alta Payment Response - Unable to find order {OrderId}", orderId);
 
                 return NotFound();
             }
+
+            if (order.Paid)
+            {
+                _logger.LogInformation("Alta Payment Response - Order {OrderId} already paid", orderId);
+                return Ok();
+            }
+
             var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
             var altaSettings = JsonConvert.DeserializeObject<AltaSettings>(order.EkomPaymentProviderData);

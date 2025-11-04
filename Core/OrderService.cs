@@ -7,6 +7,7 @@ namespace Ekom.Payments;
 public interface IOrderService
 {
     Task<OrderStatus?> GetAsync(Guid id);
+    Task<OrderStatus?> GetByCustomAsync(string id);
     Task<OrderStatus> InsertAsync(decimal total,
         PaymentSettings paymentSettings,
         object paymentProviderSettings,
@@ -45,6 +46,19 @@ class OrderService : IOrderService
 
         return await db.OrderStatus
             .Where(x => x.UniqueId == id)
+            .FirstOrDefaultAsync();
+    }
+
+    /// <summary>
+    /// Get order with the given custom id
+    /// </summary>
+    /// <param name="id">Id</param>
+    public async Task<OrderStatus?> GetByCustomAsync(string id)
+    {
+        await using var db = _dbFac.GetDatabase();
+
+        return await db.OrderStatus
+            .Where(x => x.CustomData == id)
             .FirstOrDefaultAsync();
     }
 
