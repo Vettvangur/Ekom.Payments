@@ -135,10 +135,11 @@ public class AltaResponseController : ControllerBase
                 });
 
                 checksumValid = response.Checksum == calculatedChecksum;
-                _logger.LogInformation($"Alta Payment Response - Checksum is {(checksumValid ? "valid" : "invalid")}");
+
+                _logger.LogInformation($"Alta Payment Response - Checksum is {(checksumValid ? "valid" : "invalid")} CustomData {order.CustomData}");
             }
 
-            if (!(order.CustomData ?? "").Equals(orderId) || !checksumValid)
+            if (!(order.CustomData ?? "").Equals(orderId.ToString(), StringComparison.InvariantCultureIgnoreCase) || !checksumValid)
             {
                 _logger.LogInformation($"Alta Payment Response - Verification Error - Order ID: {order.CustomData}");
 
