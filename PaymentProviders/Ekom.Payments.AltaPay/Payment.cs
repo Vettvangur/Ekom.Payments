@@ -7,6 +7,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
+using XAct;
 
 namespace Ekom.Payments.AltaPay;
 
@@ -77,6 +78,8 @@ public class Payment : IPaymentProvider
 
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
 
+            var errorUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.ErrorUrl, _httpCtx.Request);
+
             // Persist in database and retrieve unique order id
             var orderStatus = await _orderService.InsertAsync(
                 total,
@@ -116,6 +119,8 @@ public class Payment : IPaymentProvider
                 { "config[callback_notification]", reportUrl.ToString().Replace("//ekom","/ekom", StringComparison.InvariantCultureIgnoreCase) },
                 // Optional parameters
                 { "language", ParseSupportedLanguages(paymentSettings.Language) },
+                { "payment_source", "eCommerce" },
+                { "transaction_info[0]", paymentSettings.Store }
             };
 
             if (!string.IsNullOrWhiteSpace(formUrl.ToString()))
@@ -139,9 +144,12 @@ public class Payment : IPaymentProvider
             // Extract the payment URL (redirect the customer here)
             var url = xml.Descendants("Url").FirstOrDefault()?.Value;
 
+            var errorMessage = xml.Descendants("ErrorMessage").FirstOrDefault()?.Value;
+
             if (string.IsNullOrEmpty(url))
             {
-                _logger.LogError($"Alta Payment Request - Error creating Payment - Request: {JsonSerializer.Serialize(form)} - Response: {contentString} OrderId: {paymentSettings.OrderUniqueId}");
+                url = errorUrl.ToString() + "?errorStatus=paymenterror&errorMessage=We could no process your payment. Try again or contact Nespresso.";
+                _logger.LogError($"Alta Payment Request - Error creating Payment - Request: {JsonSerializer.Serialize(form)} - Response: {contentString} OrderId: {paymentSettings.OrderUniqueId} Message: {errorMessage}");
             }
 
             return FormHelper.Redirect(url);
