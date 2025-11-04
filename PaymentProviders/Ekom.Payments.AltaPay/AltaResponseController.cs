@@ -138,9 +138,9 @@ public class AltaResponseController : ControllerBase
                 _logger.LogInformation($"Alta Payment Response - Checksum is {(checksumValid ? "valid" : "invalid")}");
             }
 
-            if (!order.UniqueId.Equals(orderId) || !checksumValid)
+            if (!(order.CustomData ?? "").Equals(orderId) || !checksumValid)
             {
-                _logger.LogInformation($"Alta Payment Response - Verification Error - Order ID: {order.UniqueId}");
+                _logger.LogInformation($"Alta Payment Response - Verification Error - Order ID: {order.CustomData}");
 
                 await Events.OnErrorAsync(this, new ErrorEventArgs
                 {
@@ -187,7 +187,7 @@ public class AltaResponseController : ControllerBase
                     OrderStatus = order,
                 });
 
-                _logger.LogInformation($"Alta Payment Response - SUCCESS - Order ID: {order.UniqueId}");
+                _logger.LogInformation($"Alta Payment Response - SUCCESS - Order ID: {order.CustomData}");
             }
             else
             {
