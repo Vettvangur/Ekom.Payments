@@ -117,7 +117,7 @@ public class AltaResponseController : ControllerBase
             var altaSettings = JsonConvert.DeserializeObject<AltaSettings>(order.EkomPaymentProviderData);
 
             var checksumValid = true;
-            if (altaSettings.CustomerInformationSharedSecret != null)
+            if (!string.IsNullOrEmpty(altaSettings.CustomerInformationSharedSecret))
             {
                 _logger.LogInformation("Alta Payment Response - Validationg checksum");
 
