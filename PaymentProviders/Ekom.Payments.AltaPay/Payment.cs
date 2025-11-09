@@ -1,13 +1,13 @@
 using Ekom.Payments.AltaPay.Model;
 using Ekom.Payments.Helpers;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
-using XAct;
 
 namespace Ekom.Payments.AltaPay;
 
@@ -28,7 +28,7 @@ public class Payment : IPaymentProvider
     readonly IOrderService _orderService;
     readonly HttpContext _httpCtx;
     readonly IHttpClientFactory _httpClientFactory;
-
+    readonly IConfiguration _configuration;
     /// <summary>
     /// ctor for Unit Tests
     /// </summary>
@@ -38,14 +38,16 @@ public class Payment : IPaymentProvider
         IUmbracoService uService,
         IOrderService orderService,
         IHttpContextAccessor httpContext,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        IConfiguration configuration)
     {
         _logger = logger;
         _settings = settings;
         _uService = uService;
         _orderService = orderService;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
-        _httpClientFactory=httpClientFactory;
+        _httpClientFactory = httpClientFactory;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -120,6 +122,7 @@ public class Payment : IPaymentProvider
                 // Optional parameters
                 { "language", ParseSupportedLanguages(paymentSettings.Language) },
                 { "payment_source", "eCommerce" },
+                { "type", "paymentAndCapture" },
                 { "transaction_info[0]", paymentSettings.Store }
             };
 
@@ -164,6 +167,101 @@ public class Payment : IPaymentProvider
             throw;
         }
     }
+
+    public async Task CaptureReservationAsync(string transactionId, decimal? amount = null, string? reconciliationIdentifier = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(transactionId))
+            throw new ArgumentException("Transaction ID is required.", nameof(transactionId));
+
+        // Load from configuration
+        var section = _configuration.GetSection("Ekom:Payments:altapay");
+
+        var userName = section["ApiUserName"];
+        var password = section["ApiPassword"];
+        var baseUrl = section["BaseAddress"];
+        var hostHeader = section["HostOverride"];
+
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            throw new InvalidOperationException("AltaPay BaseAddress is not configured.");
+
+        var client = _httpClientFactory.CreateClient();
+        client.BaseAddress = new Uri(baseUrl, UriKind.Absolute);
+
+        // Basic auth
+        var credentials = $"{userName}:{password}";
+        var authHeader = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(credentials));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
+
+        if (!string.IsNullOrWhiteSpace(hostHeader))
+        {
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Host", hostHeader.Trim());
+            client.DefaultRequestHeaders.TryAddWithoutValidation("X-Forwarded-Host", hostHeader.Trim());
+        }
+
+        // Build form body
+        var form = new List<KeyValuePair<string, string>>
+        {
+            new("transaction_id", transactionId)
+        };
+
+        if (amount.HasValue && amount.Value > 0)
+        {
+            form.Add(new("amount", amount.Value.ToString("0.00################", CultureInfo.InvariantCulture)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(reconciliationIdentifier))
+        {
+            form.Add(new("reconciliation_identifier", reconciliationIdentifier));
+        }
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "captureReservation")
+        {
+            Content = new FormUrlEncodedContent(form)
+        };
+
+        using var resp = await client.SendAsync(req, ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            _logger.LogError("AltaPay captureReservation failed: {Status} {Reason}. Body: {Body}",
+                (int)resp.StatusCode, resp.ReasonPhrase, body);
+            throw new HttpRequestException($"AltaPay captureReservation failed: {(int)resp.StatusCode} {resp.ReasonPhrase}");
+        }
+
+        // Parse XML response
+        try
+        {
+            var xml = XDocument.Parse(body);
+            var result = xml.Descendants("Result").FirstOrDefault()?.Value;
+
+            if (!string.Equals(result, "Success", StringComparison.OrdinalIgnoreCase))
+            {
+                var merchantMsg = xml.Descendants("MerchantErrorMessage").FirstOrDefault()?.Value;
+                var cardMsg = xml.Descendants("CardHolderErrorMessage").FirstOrDefault()?.Value;
+                var reason = xml.Descendants("Reason").FirstOrDefault()?.Value;
+
+                var details = merchantMsg ?? cardMsg ?? reason ?? "Unknown AltaPay error";
+
+                _logger.LogError("AltaPay captureReservation returned non-success. Result={Result}, Details={Details}, XML={Xml}",
+                    result, details, body);
+
+                throw new InvalidOperationException($"AltaPay capture failed: {details}");
+            }
+
+            var capturedAmount = xml.Descendants("CapturedAmount").FirstOrDefault()?.Value;
+            var currency = xml.Descendants("Currency").FirstOrDefault()?.Value;
+
+            _logger.LogInformation("AltaPay capture succeeded. Tx={TransactionId}, Captured={CapturedAmount} {Currency}",
+                transactionId, capturedAmount ?? "(n/a)", currency ?? "");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to parse AltaPay captureReservation XML. Body: {Body}", body);
+            throw;
+        }
+    }
+    
 
     private static string ParseSupportedLanguages(string language)
     {
