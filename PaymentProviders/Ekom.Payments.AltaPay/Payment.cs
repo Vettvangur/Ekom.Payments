@@ -7,7 +7,6 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
-using XAct;
 
 namespace Ekom.Payments.AltaPay;
 
@@ -120,6 +119,7 @@ public class Payment : IPaymentProvider
                 // Optional parameters
                 { "language", ParseSupportedLanguages(paymentSettings.Language) },
                 { "payment_source", "eCommerce" },
+                { "type", "paymentAndCapture" },
                 { "transaction_info[0]", paymentSettings.Store }
             };
 

@@ -149,6 +149,8 @@ class Payment : IPaymentProvider
             // Borgun only supports specific types of order id's
             var borgunOrderId = orderStatus.UniqueId.ToString().Split('-').Last();
 
+            ArgumentNullException.ThrowIfNull(borgunSettings.SecretCode);
+
             //CheckHash
             var checkHash = CryptoHelpers.GetHMACSHA256(borgunSettings.SecretCode,
                 new CheckHashMessage(
