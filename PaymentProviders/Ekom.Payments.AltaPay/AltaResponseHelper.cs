@@ -1,5 +1,5 @@
+using System.Security.Cryptography;
 using System.Text;
-using XSystem.Security.Cryptography;
 
 namespace Ekom.Payments.AltaPay;
 
@@ -7,29 +7,31 @@ public static class AltaResponseHelper
 {
     public static string CalculateChecksum(ChecksumCalculationRequest request)
     {
-        var inputData = request.ToDictionary();
-        var data = new List<string>();
-        foreach (KeyValuePair<string, string> item in inputData.OrderBy(pair => pair.Key).ToList())
+        // Build "key=value" pairs sorted by key, joined with commas
+        var dict = request.ToDictionary();
+
+        var sb = new StringBuilder(capacity: 256);
+        foreach (var kvp in dict.OrderBy(k => k.Key, StringComparer.Ordinal))
         {
-            data.Add(item.Key + "=" + item.Value);
+            if (sb.Length > 0) sb.Append(',');
+            sb.Append(kvp.Key).Append('=').Append(kvp.Value ?? string.Empty);
         }
-        using var md5 = new MD5CryptoServiceProvider();
-        byte[] hashbytes = md5.ComputeHash(Encoding.UTF8.GetBytes(string.Join(",", data).ToArray()));
-        string hashstring = "";
-        for (int i = 0; i < hashbytes.Length; i++)
-        {
-            hashstring += hashbytes[i].ToString("x2");
-        }
-        return hashstring;
+
+        // MD5 over UTF-8 bytes
+        using var md5 = MD5.Create();
+        var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()));
+
+        // Lowercase hex (matches your previous behavior)
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }
 
 public class ChecksumCalculationRequest
 {
-    public string Amount { get; set; }
-    public string Currency { get; set; }
-    public string OrderId { get; set; }
-    public string Secret { get; set; }
+    public required string Amount { get; set; }
+    public required string Currency { get; set; }
+    public required string OrderId { get; set; }
+    public required string Secret { get; set; }
 
     public Dictionary<string, string> ToDictionary() => new Dictionary<string, string>
     {
