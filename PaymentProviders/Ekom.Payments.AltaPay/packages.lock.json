@@ -56,8 +56,8 @@
       },
       "linq2db": {
         "type": "Transitive",
-        "resolved": "5.4.1.9",
-        "contentHash": "Djc7yNoVT7byauCbFddUi87FXGfUdk1TtXC2lYQOPt86674IpGMPas7JQkU1AJKnTqpuZeaYdgRqEn7hASpZPQ=="
+        "resolved": "5.4.1",
+        "contentHash": "qyH32MbFK6T55KsEcQYTbPFfkOa1Mo65lY/Zo8SFVMy0pwkQBCTnA/RUxyG5+l3D/mgfPz85PH3upDrtklSMrw=="
       },
       "Microsoft.Bcl.AsyncInterfaces": {
         "type": "Transitive",
@@ -295,7 +295,7 @@
           "Azure.Identity": "[1.17.0, )",
           "Ekom.Common": "[0.1.901, )",
           "Microsoft.Data.SqlClient": "[6.1.2, )",
-          "linq2db": "[5.4.1.9, )"
+          "linq2db": "[5.4.1, )"
         }
       }
     }
