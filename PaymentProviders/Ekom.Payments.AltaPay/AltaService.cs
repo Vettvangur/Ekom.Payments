@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using System.Globalization;
-using System.Net.Http.Headers;
 using System.Xml.Linq;
 
 namespace Ekom.Payments.AltaPay;
@@ -21,30 +20,7 @@ public class AltaService
         if (string.IsNullOrWhiteSpace(transactionId))
             throw new ArgumentException("Transaction ID is required.", nameof(transactionId));
 
-        // Load from configuration
-        var section = _configuration.GetSection("Ekom:Payments:altapay");
-
-        var userName = section["ApiUserName"];
-        var password = section["ApiPassword"];
-        var baseUrl = section["BaseAddress"];
-        var hostHeader = section["HostOverride"];
-
-        if (string.IsNullOrWhiteSpace(baseUrl))
-            throw new InvalidOperationException("AltaPay BaseAddress is not configured.");
-
-        var client = _httpClientFactory.CreateClient();
-        client.BaseAddress = new Uri(baseUrl, UriKind.Absolute);
-
-        // Basic auth
-        var credentials = $"{userName}:{password}";
-        var authHeader = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(credentials));
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
-
-        if (!string.IsNullOrWhiteSpace(hostHeader))
-        {
-            client.DefaultRequestHeaders.TryAddWithoutValidation("Host", hostHeader.Trim());
-            client.DefaultRequestHeaders.TryAddWithoutValidation("X-Forwarded-Host", hostHeader.Trim());
-        }
+        var client = _httpClientFactory.CreateClient("AltaPay");
 
         // Build form body
         var form = new List<KeyValuePair<string, string>>
