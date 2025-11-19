@@ -223,84 +223,208 @@ public class AltaResponseController : ControllerBase
     [ApiExplorerSettings(IgnoreApi = true)]
     [HttpGet, HttpPost]
     [Route("fail")]
-    public async Task<IActionResult> Fail(PaymentResponse response)
+    public async Task<IActionResult> Fail(PaymentResponse? response, CancellationToken ct = default)
     {
         _logger.LogInformation("Alta Payment Fail Response - Start");
 
-        var model = response.GetApiResponse();
-
-        _logger.LogDebug(JsonConvert.SerializeObject(model));
-
-
-        if (model == null || !ModelState.IsValid)
+        if (response is null)
         {
-            _logger.LogDebug(JsonConvert.SerializeObject(ModelState));
+            _logger.LogWarning("Alta Payment Fail Response - PaymentResponse is null");
             return BadRequest();
         }
 
-        _logger.LogDebug("Alta Payment Fail Response - ModelState.IsValid");
-
+        APIResponse? model;
         try
         {
-            var transaction = model.Body.Transactions.First();
-            if (!Guid.TryParse(transaction.ShopOrderId, out var orderId))
-            {
-                if (transaction.ShopOrderId == null)
-                {
-                    _logger.LogWarning("Alta Payment Fail Response - ShopOrderId is null");
-                    return BadRequest();
-                }
-
-                var merchantRefParts = transaction.ShopOrderId.Split(';');
-                var rawGuid = merchantRefParts.LastOrDefault();
-
-                if (!Guid.TryParse(rawGuid, out Guid newOrderId))
-                {
-                    return BadRequest();
-                }
-
-                orderId = newOrderId;
-            }
-
-            _logger.LogInformation("Alta Payment Fail Response - OrderID: " + orderId);
-
-            OrderStatus? order = await _orderService.GetAsync(orderId);
-            if (order == null)
-            {
-                _logger.LogWarning("Alta Payment Fail Response - Unable to find order {OrderId}", orderId);
-
-                return NotFound();
-            }
-            var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
-
-            paymentSettings.ErrorUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.ErrorUrl, _httpCtx.Request);
-
-            _logger.LogInformation("Alta Payment Fail Response - Redirects to " + paymentSettings.ErrorUrl);
-
-            return Redirect(paymentSettings.ErrorUrl.ToString());
+            model = response.GetApiResponse();
         }
         catch (Exception ex)
         {
-            var transaction = model.Body.Transactions.FirstOrDefault();
-            _logger.LogError(ex, "Alta Payment Fail Response - Failed. " + transaction?.ShopOrderId);
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
+            _logger.LogError(ex, "Alta Payment Fail Response - GetApiResponse threw");
+            await NotifyErrorAsync(ex, null, null, ct);
+            return StatusCode(StatusCodes.Status500InternalServerError);
+        }
 
-            if (_settings.SendEmailAlerts)
+        if (model is null)
+        {
+            _logger.LogWarning("Alta Payment Fail Response - model is null");
+            return BadRequest();
+        }
+
+        if (!ModelState.IsValid)
+        {
+            _logger.LogWarning("Alta Payment Fail Response - ModelState invalid {@ModelState}", ModelState);
+            return BadRequest(ModelState);
+        }
+
+        var transaction = model.Body?.Transactions?.FirstOrDefault();
+        if (transaction is null)
+        {
+            _logger.LogWarning("Alta Payment Fail Response - No transactions in response");
+            return BadRequest();
+        }
+
+        if (!TryGetOrderId(transaction.ShopOrderId, out var orderId))
+        {
+            _logger.LogWarning(
+                "Alta Payment Fail Response - Invalid ShopOrderId {ShopOrderId}",
+                transaction.ShopOrderId
+            );
+            return BadRequest();
+        }
+
+        _logger.LogInformation("Alta Payment Fail Response - Parsed OrderID {OrderId}", orderId);
+
+        OrderStatus? order;
+        try
+        {
+            order = await _orderService.GetAsync(orderId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Alta Payment Fail Response - Error getting order {OrderId}", orderId);
+            await NotifyErrorAsync(ex, transaction.ShopOrderId, orderId, ct);
+            return StatusCode(StatusCodes.Status500InternalServerError);
+        }
+
+        if (order is null)
+        {
+            _logger.LogWarning("Alta Payment Fail Response - Unable to find order {OrderId}", orderId);
+            return NotFound();
+        }
+
+        PaymentSettings? paymentSettings;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(order.EkomPaymentSettingsData))
             {
-                await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
-                {
-                    Subject = "Alta Payment Fail Response - Failed. " + transaction?.ShopOrderId,
-                    Body = $"<p>Alta Payment Fail Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString() + "<br><br> " + JsonConvert.SerializeObject(model),
-                    IsBodyHtml = true,
-                });
+                _logger.LogWarning(
+                    "Alta Payment Fail Response - Missing EkomPaymentSettingsData for order {OrderId}",
+                    orderId
+                );
+                paymentSettings = null;
+            }
+            else
+            {
+                paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Alta Payment Fail Response - Unable to deserialize payment settings for order {OrderId}",
+                orderId
+            );
+            await NotifyErrorAsync(ex, transaction.ShopOrderId, orderId, ct);
+            paymentSettings = null;
+        }
+
+        Uri? redirectUri = null;
+
+        try
+        {
+            if (paymentSettings?.ErrorUrl != null)
+            {
+                redirectUri = PaymentsUriHelper.EnsureFullUri(paymentSettings.ErrorUrl, _httpCtx.Request);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error making ErrorUrl absolute for order {OrderId}", orderId);
+        }
+
+        if (redirectUri == null)
+        {
+            var fallbackUrl = "/?altapayerror=true";
+
+            try
+            {
+                redirectUri = PaymentsUriHelper.EnsureFullUri(
+                    new Uri(fallbackUrl, UriKind.Relative),
+                    _httpCtx.Request);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Fallback ErrorUrl also failed for order {OrderId}", orderId);
+            }
+        }
+
+        _logger.LogInformation("Alta Payment Fail Response - Redirecting to {ErrorUrl}", redirectUri);
+
+        if (redirectUri == null)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "Payment failed");
+        }
+
+        return Redirect(redirectUri.ToString());
+
+
+        static bool TryGetOrderId(string? shopOrderId, out Guid orderId)
+        {
+            orderId = Guid.Empty;
+
+            if (string.IsNullOrWhiteSpace(shopOrderId))
+            {
+                return false;
             }
 
-            throw;
+            // Direct GUID
+            if (Guid.TryParse(shopOrderId, out orderId))
+            {
+                return true;
+            }
+
+            // Try last part after ';'
+            var parts = shopOrderId.Split(';', StringSplitOptions.RemoveEmptyEntries);
+            var rawGuid = parts.LastOrDefault();
+
+            return Guid.TryParse(rawGuid, out orderId);
+        }
+
+        async Task NotifyErrorAsync(
+            Exception ex,
+            string? shopOrderId,
+            Guid? orderId,
+            CancellationToken token)
+        {
+            try
+            {
+                await Events.OnErrorAsync(this, new ErrorEventArgs
+                {
+                    Exception = ex
+                });
+
+                if (_settings.SendEmailAlerts)
+                {
+                    var subject = $"Alta Payment Fail Response - Failed. {shopOrderId ?? orderId?.ToString() ?? "Unknown"}";
+
+                    var body = $@"
+                        <p>Alta Payment Fail Response - Failed</p>
+                        <p>Request URL: {HttpContext.Request.GetDisplayUrl()}</p>
+                        <p>ShopOrderId: {shopOrderId}</p>
+                        <p>OrderId: {orderId}</p>
+                        <pre>{ex}</pre>";
+
+                    await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
+                    {
+                        Subject = subject,
+                        Body = body,
+                        IsBodyHtml = true
+                    });
+
+                }
+            }
+            catch (Exception notifyEx)
+            {
+                _logger.LogError(
+                    notifyEx,
+                    "Alta Payment Fail Response - Failed while sending error notification"
+                );
+            }
         }
     }
+
 
     [ApiExplorerSettings(IgnoreApi = true)]
     [HttpGet, HttpPost]
