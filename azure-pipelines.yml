@@ -52,6 +52,7 @@ steps:
     packagesToPush: '$(Build.ArtifactStagingDirectory)/**/*.nupkg;!$(Build.ArtifactStagingDirectory)/**/*.snupkg'
     nuGetFeedType: 'external'
     publishFeedCredentials: 'VV Public NuGet'
+    arguments: '-SkipDuplicate -NonInteractive'
 
 - task: PublishSymbols@2
   inputs:
