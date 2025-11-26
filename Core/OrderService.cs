@@ -45,7 +45,7 @@ class OrderService : IOrderService
         await using var db = _dbFac.GetDatabase();
 
         return await db.OrderStatus
-            .Where(x => x.UniqueId == id)
+            .Where(x => x.UniqueId == id || x.CustomData == id.ToString())
             .FirstOrDefaultAsync();
     }
 
