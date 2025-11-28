@@ -126,8 +126,8 @@ class Payment : IPaymentProvider
 
                 formValues.Add($"Items[{lineNumber}].Name", order.Title);
                 formValues.Add($"Items[{lineNumber}].Quantity", order.Quantity.ToString("F0"));
-                formValues.Add($"Items[{lineNumber}].UnitPrice", order.Price.ToString("F0", currencyFormat));
-                formValues.Add($"Items[{lineNumber}].Amount", order.GrandTotal.ToString("F0", currencyFormat));
+                formValues.Add($"Items[{lineNumber}].UnitPrice", FormatPrice(order.Price));
+                formValues.Add($"Items[{lineNumber}].Amount", FormatPrice(order.GrandTotal));
             }
 
             // Netgiro only supports specific types of order id's
@@ -137,7 +137,7 @@ class Payment : IPaymentProvider
                 CombineSignature(
                     netgiroSettings.Secret,
                     orderStatus.UniqueId.ToString(),
-                    totalAmount,
+                    FormatPrice(total),
                     netgiroSettings.ApplicationId.ToString()));
             formValues.Add("Signature", sig);
             formValues.Add("ReferenceNumber", orderStatus.UniqueId.ToString());
