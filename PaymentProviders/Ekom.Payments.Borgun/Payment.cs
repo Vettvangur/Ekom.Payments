@@ -42,7 +42,7 @@ class Payment : IPaymentProvider
     private string FormatPrice(decimal price)
     {
         var rounded = Math.Round(price, 0, MidpointRounding.AwayFromZero);
-        return rounded.ToString("0", CultureInfo.InvariantCulture);
+        return $"{rounded},00";
     }
 
     /// <summary>
