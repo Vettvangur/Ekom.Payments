@@ -100,9 +100,6 @@ class Payment : IPaymentProvider
 
             var reportUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
 
-#pragma warning disable CA1305 // Specify IFormatProvider
-            var totalAmount = Math.Ceiling(total).ToString("F0");
-#pragma warning restore CA1305 // Specify IFormatProvider
             // Begin populating form values to be submitted
             var formValues = new Dictionary<string, string?>
             {
@@ -113,7 +110,7 @@ class Payment : IPaymentProvider
                 { "PaymentCancelledURL", paymentSettings.CancelUrl.ToString() },
                 { "PaymentConfirmedURL", reportUrl.ToString() },
 
-                { "TotalAmount",  totalAmount},
+                { "TotalAmount",  FormatPrice(total)},
             };
 
             //if (netgiroSettings.iFrame.HasValue)
@@ -168,5 +165,10 @@ class Payment : IPaymentProvider
         var sb = new StringBuilder();
         Array.ForEach(args, x => sb.Append(x));
         return sb.ToString();
+    }
+    private string FormatPrice(decimal price)
+    {
+        var rounded = Math.Round(price, 0, MidpointRounding.AwayFromZero);
+        return rounded.ToString("0", CultureInfo.InvariantCulture);
     }
 }

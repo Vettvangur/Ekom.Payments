@@ -41,7 +41,8 @@ class Payment : IPaymentProvider
 
     private string FormatPrice(decimal price)
     {
-        return price.ToString(CultureInfo.InvariantCulture).Replace(".0", "", StringComparison.InvariantCulture) + ",00";
+        var rounded = Math.Round(price, 0, MidpointRounding.AwayFromZero);
+        return rounded.ToString("0", CultureInfo.InvariantCulture);
     }
 
     /// <summary>
