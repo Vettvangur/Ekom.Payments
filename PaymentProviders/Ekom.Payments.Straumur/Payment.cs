@@ -155,7 +155,7 @@ public class Payment : IPaymentProvider
 
             var response = JsonSerializer.Deserialize<PaymentRequestResponse>(responseContent);
 
-            return FormHelper.CreateRequest(new Dictionary<string, string?>(), response.Url, "GET");
+            return FormHelper.CreateRequest(new Dictionary<string, string?>(), response.Url, "GET", cspNonce: paymentSettings.CspNonce);
         }
         catch (Exception ex)
         {

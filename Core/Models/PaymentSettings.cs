@@ -99,6 +99,15 @@ public class PaymentSettings : PaymentSettingsBase<PaymentSettings>
     /// </summary>
     public Uri? ReportUrl { get; set; } = null;
 
+
+    /// <summary>
+    /// Per-request CSP nonce used to authorize trusted inline scripts/styles.
+    /// Required when the site enforces CSP with nonces (e.g. to allow payment
+    /// gateway form submission logic). Null when CSP is not enabled.
+    /// </summary>
+    public string? CspNonce { get; set; }
+
+
     /// <summary>
     /// Override umbraco configured success url. Used by Ekom Payments to forward user to f.x. receipt page.
     /// When using umbraco value, netPayment adds reference to queryString to use with OrderRetriever on return.

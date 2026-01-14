@@ -147,7 +147,7 @@ class Payment : IPaymentProvider
                 total,
                 orderStatus.UniqueId);
 
-            return FormHelper.CreateRequest(formValues, netgiroSettings.PaymentPageUrl.ToString());
+            return FormHelper.CreateRequest(formValues, netgiroSettings.PaymentPageUrl.ToString(), cspNonce: paymentSettings.CspNonce);
         }
         catch (Exception ex)
         {

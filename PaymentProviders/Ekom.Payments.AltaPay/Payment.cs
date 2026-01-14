@@ -155,7 +155,7 @@ public class Payment : IPaymentProvider
                 _logger.LogError($"Alta Payment Request - Error creating Payment - Request: {JsonSerializer.Serialize(form)} - Response: {contentString} OrderId: {paymentSettings.OrderUniqueId} Message: {errorMessage}");
             }
 
-            return FormHelper.Redirect(url);
+            return FormHelper.Redirect(url, cspNonce: paymentSettings.CspNonce);
         }
         catch (Exception ex)
         {
