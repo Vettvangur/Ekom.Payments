@@ -18,9 +18,12 @@ static class FormHelper
         html.Append(@"<noscript> Please click the submit button below.<br/> <button type=""submit"">Submit</button> </noscript>");
         html.Append("</form>");
 
-        if (!string.IsNullOrWhiteSpace(cspNonce))
-            html.Append($"<script nonce=\"{cspNonce}\">(function(){{document.getElementById('payform').submit();}})()</script>");
+        var nonceAttribute = !string.IsNullOrWhiteSpace(cspNonce)
+            ? $" nonce=\"{cspNonce}\""
+            : string.Empty;
 
+        html.Append($"<script{nonceAttribute}>(function(){{document.getElementById('payform').submit();}})()</script>");
+        
         return html.ToString();
     }
 
@@ -28,7 +31,16 @@ static class FormHelper
     {
         var safeUrl = System.Net.WebUtility.HtmlEncode(url);
 
-        var html = new StringBuilder($"<script nonce=\"{cspNonce}\">(function(){{ window.location.href = \"{safeUrl}\"; }}())</script>");
+        var html = new StringBuilder();
+
+        if (!string.IsNullOrWhiteSpace(cspNonce))
+        {
+            html.Append($"<script nonce=\"{cspNonce}\">(function(){{ window.location.href = \"{safeUrl}\"; }}())</script>");
+        }
+        else
+        {
+            html.Append($"<script>(function(){{ window.location.href = \"{safeUrl}\"; }}())</script>");
+        }
 
         return html.ToString();
     }
