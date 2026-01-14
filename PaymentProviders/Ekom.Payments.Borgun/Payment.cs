@@ -170,7 +170,7 @@ class Payment : IPaymentProvider
 
             _logger.LogInformation("Borgun Payment Request - Amount: {Total} OrderId: {OrderUniqueId}", total, orderStatus.UniqueId);
 
-            return FormHelper.CreateRequest(formValues, borgunSettings.PaymentPageUrl.ToString());
+            return FormHelper.CreateRequest(formValues, borgunSettings.PaymentPageUrl.ToString(), cspNonce: paymentSettings.CspNonce);
         }
         catch (Exception ex)
         {

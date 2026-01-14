@@ -104,7 +104,7 @@ class Payment : IPaymentProvider
             {
 
             };
-            return FormHelper.CreateRequest(formValues, asynchronousExampleSettings.PaymentPageUrl.ToString());
+            return FormHelper.CreateRequest(formValues, asynchronousExampleSettings.PaymentPageUrl.ToString(), cspNonce: paymentSettings.CspNonce);
         }
         catch (Exception ex)
         {

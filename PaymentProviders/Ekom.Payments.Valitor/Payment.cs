@@ -186,7 +186,7 @@ public class Payment : IPaymentProvider
 
             _logger.LogInformation("Valitor Payment Request - Amount: " + total + " OrderId: " + orderStatus.UniqueId);
 
-            return FormHelper.CreateRequest(formValues, valitorSettings.PaymentPageUrl.ToString());
+            return FormHelper.CreateRequest(formValues, valitorSettings.PaymentPageUrl.ToString(), cspNonce: paymentSettings.CspNonce);
         }
         catch (Exception ex)
         {
