@@ -1,5 +1,6 @@
 using Ekom.Payments.Helpers;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Text;
@@ -23,6 +24,7 @@ public class Payment : IPaymentProvider
     readonly IUmbracoService _uService;
     readonly IOrderService _orderService;
     readonly HttpContext _httpCtx;
+    readonly IConfiguration _config;
 
     /// <summary>
     /// ctor for Unit Tests
@@ -32,13 +34,15 @@ public class Payment : IPaymentProvider
         PaymentsConfiguration settings,
         IUmbracoService uService,
         IOrderService orderService,
-        IHttpContextAccessor httpContext)
+        IHttpContextAccessor httpContext,
+        IConfiguration config)
     {
         _logger = logger;
         _settings = settings;
         _uService = uService;
         _orderService = orderService;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
+        _config = config;
     }
 
     /// <summary>
@@ -186,7 +190,9 @@ public class Payment : IPaymentProvider
 
             _logger.LogInformation("Valitor Payment Request - Amount: " + total + " OrderId: " + orderStatus.UniqueId);
 
-            return FormHelper.CreateRequest(formValues, valitorSettings.PaymentPageUrl.ToString(), cspNonce: paymentSettings.CspNonce);
+            var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
+
+            return FormHelper.CreateRequest(formValues, valitorSettings.PaymentPageUrl.ToString(), cspNonce: cspNonce);
         }
         catch (Exception ex)
         {

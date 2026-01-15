@@ -1,16 +1,9 @@
-using Ekom.Payments;
 using Ekom.Payments.Helpers;
-using Ekom.Payments.Netgiro;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Extensions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
-using System.Web;
 
 namespace Ekom.Payments.Netgiro;
 
@@ -31,6 +24,7 @@ class Payment : IPaymentProvider
     readonly IUmbracoService _uService;
     readonly IOrderService _orderService;
     readonly HttpContext _httpCtx;
+    readonly IConfiguration _config;
 
     /// <summary>
     /// ctor for Unit Tests
@@ -40,13 +34,15 @@ class Payment : IPaymentProvider
         PaymentsConfiguration settings,
         IUmbracoService uService,
         IOrderService orderService,
-        IHttpContextAccessor httpContext)
+        IHttpContextAccessor httpContext,
+        IConfiguration config)
     {
         _logger = logger;
         _settings = settings;
         _uService = uService;
         _orderService = orderService;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
+        _config = config;
     }
 
     /// <summary>
@@ -147,7 +143,9 @@ class Payment : IPaymentProvider
                 total,
                 orderStatus.UniqueId);
 
-            return FormHelper.CreateRequest(formValues, netgiroSettings.PaymentPageUrl.ToString(), cspNonce: paymentSettings.CspNonce);
+            var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
+
+            return FormHelper.CreateRequest(formValues, netgiroSettings.PaymentPageUrl.ToString(), cspNonce: cspNonce);
         }
         catch (Exception ex)
         {

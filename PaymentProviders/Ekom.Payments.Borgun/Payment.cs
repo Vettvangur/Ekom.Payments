@@ -1,5 +1,6 @@
 using Ekom.Payments.Helpers;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 
@@ -21,6 +22,7 @@ class Payment : IPaymentProvider
     readonly IUmbracoService _uService;
     readonly IOrderService _orderService;
     readonly HttpContext _httpCtx;
+    readonly IConfiguration _config;
 
     /// <summary>
     /// ctor for Unit Tests
@@ -30,13 +32,15 @@ class Payment : IPaymentProvider
         PaymentsConfiguration settings,
         IUmbracoService uService,
         IOrderService orderService,
-        IHttpContextAccessor httpContext)
+        IHttpContextAccessor httpContext,
+        IConfiguration config)
     {
         _logger = logger;
         _settings = settings;
         _uService = uService;
         _orderService = orderService;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
+        _config = config;
     }
 
     private string FormatPrice(decimal price)
@@ -170,7 +174,9 @@ class Payment : IPaymentProvider
 
             _logger.LogInformation("Borgun Payment Request - Amount: {Total} OrderId: {OrderUniqueId}", total, orderStatus.UniqueId);
 
-            return FormHelper.CreateRequest(formValues, borgunSettings.PaymentPageUrl.ToString(), cspNonce: paymentSettings.CspNonce);
+            var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
+
+            return FormHelper.CreateRequest(formValues, borgunSettings.PaymentPageUrl.ToString(), cspNonce: cspNonce);
         }
         catch (Exception ex)
         {
