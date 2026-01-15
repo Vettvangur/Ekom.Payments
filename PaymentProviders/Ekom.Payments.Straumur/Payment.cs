@@ -1,5 +1,6 @@
 using Ekom.Payments.Helpers;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net.Http.Json;
@@ -24,6 +25,7 @@ public class Payment : IPaymentProvider
     readonly IOrderService _orderService;
     readonly HttpContext _httpCtx;
     readonly IHttpClientFactory _httpClientFactory;
+    readonly IConfiguration _config;
 
     /// <summary>
     /// ctor for Unit Tests
@@ -34,14 +36,16 @@ public class Payment : IPaymentProvider
         IUmbracoService uService,
         IOrderService orderService,
         IHttpContextAccessor httpContext,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        IConfiguration config)
     {
         _logger = logger;
         _settings = settings;
         _uService = uService;
         _orderService = orderService;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
-        _httpClientFactory=httpClientFactory;
+        _httpClientFactory = httpClientFactory;
+        _config = config;
     }
 
     /// <summary>
@@ -155,7 +159,9 @@ public class Payment : IPaymentProvider
 
             var response = JsonSerializer.Deserialize<PaymentRequestResponse>(responseContent);
 
-            return FormHelper.CreateRequest(new Dictionary<string, string?>(), response.Url, "GET", cspNonce: paymentSettings.CspNonce);
+            var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
+
+            return FormHelper.CreateRequest(new Dictionary<string, string?>(), response.Url, "GET", cspNonce: cspNonce);
         }
         catch (Exception ex)
         {
