@@ -6,16 +6,16 @@
         <Nullable>enable</Nullable>
 
         <!-- Package properties -->
-        <PackageId>Ekom.Payments.AltaPay</PackageId>
+        <PackageId>Ekom.Payments.SiminnPay</PackageId>
         <Version>0.0.1</Version>
-        <Title>Ekom Payments AltaPay</Title>
+        <Title>Ekom Payments SiminnPay</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
         <PackageIcon>images\VV_Logo.png</PackageIcon>
-        <Description>Ekom Payments AltaPay - Vettvangur E-Commerce solution</Description>
+        <Description>Ekom Payments SiminnPay - Vettvangur E-Commerce solution</Description>
         <PackageReleaseNotes></PackageReleaseNotes>
-        <Copyright>Copyright 2025</Copyright>
+        <Copyright>Copyright 2026</Copyright>
         <PackageTags></PackageTags>
 
         <!-- Optional: Publish the repository URL in the built .nupkg (in the NuSpec <Repository> element) -->
@@ -51,6 +51,7 @@
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
+        <PackageReference Include="UmbracoCms.Core" Version="8.18.15" />
         <PackageReference Include="XAct.Core.PCL" Version="0.0.5014" />
     </ItemGroup>
 

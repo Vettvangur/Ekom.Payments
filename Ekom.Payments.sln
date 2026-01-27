@@ -33,6 +33,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ekom.Payments.Straumur", "P
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ekom.Payments.AltaPay", "PaymentProviders\Ekom.Payments.AltaPay\Ekom.Payments.AltaPay.csproj", "{E9D8085B-8424-A05F-810E-53257C18E345}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ekom.Payments.SiminnPay", "PaymentProviders\Ekom.Payments.SiminnPay\Ekom.Payments.SiminnPay.csproj", "{D43487E1-1090-CA6D-4C3E-FD775E0C5448}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -75,6 +77,10 @@ Global
 		{E9D8085B-8424-A05F-810E-53257C18E345}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E9D8085B-8424-A05F-810E-53257C18E345}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E9D8085B-8424-A05F-810E-53257C18E345}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D43487E1-1090-CA6D-4C3E-FD775E0C5448}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D43487E1-1090-CA6D-4C3E-FD775E0C5448}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D43487E1-1090-CA6D-4C3E-FD775E0C5448}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D43487E1-1090-CA6D-4C3E-FD775E0C5448}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -87,6 +93,7 @@ Global
 		{90180259-A918-400F-8216-EF0FD6EE31A0} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
 		{B2835696-DC8B-BB97-2E55-D9419344280E} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
 		{E9D8085B-8424-A05F-810E-53257C18E345} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
+		{D43487E1-1090-CA6D-4C3E-FD775E0C5448} = {2B11B5CF-D02F-4E45-8528-801F3F587010}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {39690F49-F3CA-44D3-8831-7E12F4C490BB}
