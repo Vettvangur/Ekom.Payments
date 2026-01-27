@@ -2,13 +2,10 @@ using Ekom.Payments.Helpers;
 using Ekom.Payments.SiminnPay.Model;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System.Globalization;
-using System.Net;
-using System.Net.Http;
 using System.Net.Mail;
 
 namespace Ekom.Payments.SiminnPay;
@@ -65,21 +62,6 @@ public class SiminnPayResponseController : ControllerBase
 
         try
         {
-            SiminnPayOrder siminnPayOrder;
-            using (var db = _dbFac.GetDatabase())
-            {
-                siminnPayOrder = await db. .SingleByIdAsync<SiminnPayOrder>(notificationCallBack.OrderKey);
-            }
-            if (siminnPayOrder == null)
-            {
-                _logger.LogWarning("No SiminnPay order found for id: {OrderKey}", notificationCallBack.OrderKey);
-                return NotFound("No SiminnPay order found");
-            }
-            if (siminnPayOrder.Status == SiminnPayStatus.PaymentSuccessful)
-            {
-                return Ok();
-            }
-
             OrderStatus? order = await _orderService.GetAsync(notificationCallBack.OrderKey);
             if (order == null)
             {
@@ -118,8 +100,6 @@ public class SiminnPayResponseController : ControllerBase
 
             _logger.LogInformation("SiminnPay Response Hit - Signature verified successfully - notificationCallBack.Status: " + notificationCallBack.Status);
 
-            siminnPayOrder.Status = notificationCallBack.Status;
-
             if (order.Paid == false)
             {
                 try
@@ -144,7 +124,6 @@ public class SiminnPayResponseController : ControllerBase
 
                 if (notificationCallBack.Status == SiminnPayStatus.PaymentSuccessful)
                 {
-                    siminnPayOrder.Completed = DateTime.Now;
                     order.Paid = true;
                     using (var db = _dbFac.GetDatabase())
                     {
@@ -166,12 +145,7 @@ public class SiminnPayResponseController : ControllerBase
                     });
                 }
             }
-
-            using (var db = _dbFac.GetDatabase())
-            {
-                await db.UpdateAsync(siminnPayOrder);
-            }
-
+            
             return Ok();
         }
         catch (Exception ex)
@@ -194,51 +168,5 @@ public class SiminnPayResponseController : ControllerBase
 
             throw;
         }
-    }
-
-    [ApiExplorerSettings(IgnoreApi = true)]
-    [HttpGet]
-    public async Task<IActionResult> Status(Guid siminnPayOrderKey)
-    {
-        _logger.LogDebug("SiminnPay Status Requested - OrderKey: {SiminnPayOrderKey}" + siminnPayOrderKey);
-
-        if (siminnPayOrderKey == Guid.Empty)
-        {
-            throw new HttpException((int)HttpStatusCode.BadRequest, "Missing siminnPayOrderKey parameter.");
-        }
-
-        OrderStatus? order = await _orderService.GetAsync(siminnPayOrderKey);
-        ArgumentNullException.ThrowIfNull(order?.EkomPaymentProviderData);
-        var siminnPaySettings = JsonConvert.DeserializeObject<SiminnPaySettings>(order.EkomPaymentProviderData);
-
-        SiminnPayOrder siminnPayOrder;
-        using (var db = _dbFac.GetDatabase())
-        {
-            siminnPayOrder = await db.SingleByIdAsync<SiminnPayOrder>(siminnPayOrderKey);
-        }
-
-        if (siminnPayOrder == null)
-        {
-            throw new HttpException((int)HttpStatusCode.NotFound, "Pay order not found.");
-        }
-
-        var svc = new SiminnPayService(siminnPaySettings.ApiKey, siminnPaySettings.ApiUrl, _logger);
-
-        var initialStatus = await svc.GetStatus(siminnPayOrderKey);
-
-        _logger.LogDebug("SiminnPay Status Requested - initialStatus.Status: {Status}", initialStatus.Status);
-
-        if (initialStatus.Status == SiminnPayStatus.Expired || initialStatus.Status == SiminnPayStatus.CancelledByCustomer)
-        {
-            siminnPayOrder.Status = initialStatus.Status;
-            using (var db = _dbFac.GetDatabase())
-            {
-                await db.UpdateAsync(siminnPayOrder);
-            }
-
-            _logger.LogDebug("SiminnPay Status Requested - Status expired or cancelled, updated siminnPayOrder");
-        }
-
-        return new JsonResult(new SiminnPayStatusView(siminnPayOrder));
     }
 }
