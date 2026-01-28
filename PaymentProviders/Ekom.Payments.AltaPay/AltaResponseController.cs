@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System.Globalization;
+using System.Text.Json;
 
 namespace Ekom.Payments.AltaPay;
 
@@ -258,11 +259,16 @@ public class AltaResponseController : ControllerBase
         }
 
         var transaction = model.Body?.Transactions?.FirstOrDefault();
+
         if (transaction is null)
         {
             _logger.LogWarning("Alta Payment Fail Response - No transactions in response");
             return BadRequest();
         }
+
+        _logger.LogWarning(
+            "Alta Payment Fail Response - Message: {Message}", System.Text.Json.JsonSerializer.Serialize(model)
+        );
 
         if (!TryGetOrderId(transaction.ShopOrderId, out var orderId))
         {
@@ -276,6 +282,7 @@ public class AltaResponseController : ControllerBase
         _logger.LogInformation("Alta Payment Fail Response - Parsed OrderID {OrderId}", orderId);
 
         OrderStatus? order;
+
         try
         {
             order = await _orderService.GetAsync(orderId);
