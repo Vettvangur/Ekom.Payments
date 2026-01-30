@@ -4,6 +4,7 @@ using LinqToDB;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System.Globalization;
@@ -115,6 +116,7 @@ public class AltaResponseController : ControllerBase
 
             var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
+
             var altaSettings = JsonConvert.DeserializeObject<AltaSettings>(order.EkomPaymentProviderData);
 
             var checksumValid = true;
@@ -329,42 +331,71 @@ public class AltaResponseController : ControllerBase
 
         Uri? redirectUri = null;
 
+        // 1. Resolve base redirect URL
         try
         {
             if (paymentSettings?.ErrorUrl != null)
             {
-                redirectUri = PaymentsUriHelper.EnsureFullUri(paymentSettings.ErrorUrl, _httpCtx.Request);
+                redirectUri = PaymentsUriHelper.EnsureFullUri(
+                    paymentSettings.ErrorUrl,
+                    _httpCtx.Request);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error making ErrorUrl absolute for order {OrderId}", orderId);
+            _logger.LogError(
+                ex,
+                "Error making ErrorUrl absolute for order {OrderId}",
+                orderId);
         }
 
+        // 2. Fallback if needed
         if (redirectUri == null)
         {
-            var fallbackUrl = "/?altapayerror=true";
-
             try
             {
                 redirectUri = PaymentsUriHelper.EnsureFullUri(
-                    new Uri(fallbackUrl, UriKind.Relative),
+                    new Uri("/?altapayerror=true", UriKind.Relative),
                     _httpCtx.Request);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Fallback ErrorUrl also failed for order {OrderId}", orderId);
+                _logger.LogError(
+                    ex,
+                    "Fallback ErrorUrl also failed for order {OrderId}",
+                    orderId);
             }
         }
 
-        _logger.LogInformation("Alta Payment Fail Response - Redirecting to {ErrorUrl}", redirectUri);
-
+        // 3. Hard failure
         if (redirectUri == null)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, "Payment failed");
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                "Payment failed");
         }
 
-        return Redirect(redirectUri.ToString());
+        // 4. Append transaction query params
+        var redirectUrl = redirectUri.ToString();
+
+        redirectUrl = AddTransactionQueryParams(
+            redirectUrl,
+            transaction,
+            model);
+
+        // explicit frontend flag
+        redirectUrl = QueryHelpers.AddQueryString(
+            redirectUrl,
+            "altapayFailed",
+            "true");
+        
+
+        _logger.LogInformation(
+            "Alta Payment Fail Response - Redirecting to {ErrorUrl}",
+            redirectUrl);
+
+        return Redirect(redirectUrl);
+
 
 
         static bool TryGetOrderId(string? shopOrderId, out Guid orderId)
@@ -413,12 +444,16 @@ public class AltaResponseController : ControllerBase
                         <p>OrderId: {orderId}</p>
                         <pre>{ex}</pre>";
 
-                    await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
+                    var msg = new System.Net.Mail.MailMessage
                     {
                         Subject = subject,
                         Body = body,
                         IsBodyHtml = true
-                    });
+                    };
+
+                    await _mailSvc.SendAsync(msg);
+
+                    msg.Dispose();
 
                 }
             }
@@ -432,6 +467,32 @@ public class AltaResponseController : ControllerBase
         }
     }
 
+    private static string AddTransactionQueryParams(
+    string baseUrl,
+    Transaction tx,
+    APIResponse model)
+    {
+        var query = new Dictionary<string, string?>
+        {
+            ["transactionId"] = tx.TransactionId,
+            ["paymentId"] = tx.PaymentId,
+            ["reservedAmount"] = tx.ReservedAmount.ToString("F2", CultureInfo.InvariantCulture),
+            ["capturedAmount"] = tx.CapturedAmount.ToString("F2", CultureInfo.InvariantCulture),
+            ["refundedAmount"] = tx.RefundedAmount.ToString("F2", CultureInfo.InvariantCulture),
+            ["currency"] = tx.MerchantCurrencyAlpha,
+            ["paymentStatus"] = model.Body.PaymentStatus.ToString(),
+            ["result"] = model.Body.Result,
+        };
+
+        // Optional AltaPay error context
+        if (!string.IsNullOrWhiteSpace(model.Header?.ErrorCode))
+            query["errorCode"] = model.Header.ErrorCode;
+
+        if (!string.IsNullOrWhiteSpace(model.Header?.ErrorMessage))
+            query["errorMessage"] = model.Header.ErrorMessage;
+
+        return QueryHelpers.AddQueryString(baseUrl, query!);
+    }
 
     [ApiExplorerSettings(IgnoreApi = true)]
     [HttpGet, HttpPost]
