@@ -60,7 +60,7 @@ namespace Ekom.Payments.SiminnPay
         /// <exception cref="SiminnPayApiUnknownPhoneException">Phone number not registered with service</exception>
         /// <exception cref="SiminnPayApiResponseException">Unrecognized siminn pay api error</exception>
         public async Task<CreatePaymentOrderResponse> CreatePaymentOrder(
-            SiminnPayOrder payOrder,
+            CreateSiminnPayOrder payOrder,
             string notifyUrl,
             string currency = "ISK",
             bool restrictToLoan = false)
@@ -123,39 +123,6 @@ namespace Ekom.Payments.SiminnPay
 
                 return JsonConvert.DeserializeObject<GetPaymentOrderStatusResponse>(content);
             }
-        }
-
-        /// <summary>
-        /// Updates the amount.
-        /// </summary>
-        /// <param name="siminnPayOrder">The siminn pay order.</param>
-        /// <param name="membershipInfo">The membership information.</param>
-        /// <exception cref="SiminnPayApiUnauthorizedException">Authorization invalid</exception>
-        /// <exception cref="SiminnPayApiNotFoundException">Order not found</exception>
-        /// <exception cref="SiminnPayApiResponseException">Unrecognized siminn pay api error</exception>
-        public async Task UpdateAmount(SiminnPayOrder siminnPayOrder, IEnumerable<MembershipDiscount>? membershipInfo = null)
-        {
-            var updateRequest = new UpdateOrderAmountRequest
-            {
-                OriginalAmount = siminnPayOrder.OriginalAmount,
-                NewAmount = siminnPayOrder.Amount,
-                MembershipDiscounts = membershipInfo ?? []
-            };
-
-            var orderContent = JsonConvert.SerializeObject(updateRequest);
-            _logger.LogDebug("UpdateAmount request {OrderContent}", orderContent);
-
-
-            using var httpClient = await CreateHttpClient().ConfigureAwait(false);
-            using var httpContent = new StringContent(orderContent, Encoding.UTF8, "application/json");
-            var resp = await httpClient.PutAsync(
-                new Uri($"{_baseServiceUrl}/paymentOrder/v1/order/{siminnPayOrder.OrderKey}/discount"),
-                httpContent
-            ).ConfigureAwait(false);
-
-            await HandleOrderActionsErrorResponseAsync(resp).ConfigureAwait(false);
-
-            resp.EnsureSuccessStatusCode();
         }
 
         /// <summary>

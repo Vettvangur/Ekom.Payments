@@ -53,14 +53,10 @@ public class Payment : IPaymentProvider
     /// <param name="paymentSettings">Configuration object for PaymentProviders</param>
     public async Task<string> RequestAsync(PaymentSettings paymentSettings)
     {
-        if (paymentSettings == null)
-            throw new ArgumentNullException(nameof(paymentSettings));
-        if (paymentSettings.Orders == null)
-            throw new ArgumentNullException(nameof(paymentSettings.Orders));
-        if (string.IsNullOrEmpty(paymentSettings.Language))
-            throw new ArgumentException(nameof(paymentSettings.Language));
-        if (string.IsNullOrEmpty(paymentSettings.CustomerInfo?.PhoneNumber))
-            throw new ArgumentException(nameof(paymentSettings.CustomerInfo.PhoneNumber));
+        ArgumentNullException.ThrowIfNull(paymentSettings);
+        ArgumentNullException.ThrowIfNull(paymentSettings.Orders);
+        ArgumentException.ThrowIfNullOrEmpty(paymentSettings.Language);
+        ArgumentException.ThrowIfNullOrEmpty(paymentSettings.CustomerInfo?.PhoneNumber);
 
         try
         {
@@ -78,15 +74,12 @@ public class Payment : IPaymentProvider
 
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
 
-            var payOrder = new SiminnPayOrder
+            var payOrder = new CreateSiminnPayOrder
             {
                 Description = paymentSettings.Orders.First().Title,
                 PhoneNumber = paymentSettings.CustomerInfo.PhoneNumber,
-                Status = SiminnPayStatus.WaitingForCustomer,
                 Amount = total,
-                OriginalAmount = total,
-                ReferenceId = paymentSettings.OrderUniqueId.ToString(),
-                Created = DateTime.UtcNow,
+                ReferenceId = paymentSettings.OrderUniqueId.ToString()
             };
 
             paymentSettings.ReportUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.ReportUrl ?? new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
@@ -97,11 +90,6 @@ public class Payment : IPaymentProvider
                                                      paymentSettings.ReportUrl.ToString(),
                                                      siminnPaySettings.Currency,
                                                      siminnPaySettings.RestrictToLoan).ConfigureAwait(false);
-
-            payOrder.OrderKey = order.OrderKey;
-            payOrder.Expires = DateTime.UtcNow.AddMinutes(1);
-            payOrder.Status = order.Status;
-            payOrder.PaymentProvider = _ppNodeName;
 
             _logger.LogInformation("Síminn Pay Payment Request - Created payment order with order key: {OrderKey}", order.OrderKey);
 
@@ -114,26 +102,24 @@ public class Payment : IPaymentProvider
                 _httpCtx
             ).ConfigureAwait(false);
 
-            payOrder.NetPaymentOrderId = orderStatus.UniqueId;
-
             using (var db = _dbFac.GetDatabase())
             {
                 await db.InsertAsync(payOrder).ConfigureAwait(false);
             }
 
-            if (payOrder.Status == SiminnPayStatus.WaitingForNewAmount)
+            if (order.Status == SiminnPayStatus.WaitingForNewAmount)
             {
                 throw new NotImplementedException("SiminnPayStatus.WaitingForNewAmount");
             }
-            else if (payOrder.Status != SiminnPayStatus.WaitingForCustomer)
+            else if (order.Status != SiminnPayStatus.WaitingForCustomer)
             {
-                _logger.LogWarning("Síminn Pay Payment Request - Received erronous status: {Status}", payOrder.Status);
+                _logger.LogWarning("Síminn Pay Payment Request - Received erronous status: {Status}", order.Status);
                 return null;
             }
 
             _logger.LogInformation("Síminn Pay Payment Request - Amount: {total} OrderId: {UniqueId}", total, orderStatus.UniqueId);
 
-            var redirectUri = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, $"?siminnPayOrderKey={payOrder.OrderKey.ToString()}");
+            var redirectUri = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, $"?siminnPayOrderKey={order.OrderKey}");
             _httpCtx.Response.Redirect(redirectUri.ToString());
             return string.Empty;
         }

@@ -51,12 +51,7 @@
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
-        <PackageReference Include="UmbracoCms.Core" Version="8.18.15" />
         <PackageReference Include="XAct.Core.PCL" Version="0.0.5014" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="..\..\Core\Ekom.Payments.Core.csproj" />
     </ItemGroup>
 
     <ItemGroup>
