@@ -24,6 +24,7 @@ public class SiminnPayResponseController : ControllerBase
     readonly IDatabaseFactory _dbFac;
     readonly IMailService _mailSvc;
     readonly HttpContext _httpCtx;
+    readonly IUmbracoService _uService;
 
     /// <summary>
     /// ctor
@@ -34,7 +35,8 @@ public class SiminnPayResponseController : ControllerBase
         IOrderService orderService,
         IDatabaseFactory dbFac,
         IMailService mailSvc,
-        IHttpContextAccessor httpContext)
+        IHttpContextAccessor httpContext,
+        IUmbracoService uService)
     {
         _logger = logger;
         _settings = settings;
@@ -42,6 +44,7 @@ public class SiminnPayResponseController : ControllerBase
         _dbFac = dbFac;
         _mailSvc = mailSvc;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
+        _uService = uService;
     }
 
     /// <summary>
@@ -168,5 +171,46 @@ public class SiminnPayResponseController : ControllerBase
 
             throw;
         }
+    }
+
+    [HttpGet("status")]
+    public async Task<ActionResult> StatusAsync(Guid siminnPayOrderKey)
+    {
+        _logger.LogDebug("SiminnPay Status Requested - siminnPayOrderKey: {SiminnPayOrderKey}", siminnPayOrderKey);
+
+        if (siminnPayOrderKey == Guid.Empty)
+        {
+            return BadRequest("Missing siminnPayOrderKey parameter.");
+        }
+
+        OrderStatus? order = await _orderService.GetByCustomAsync(siminnPayOrderKey.ToString());
+        if (order == null)
+        {
+            return NotFound("Pay order not found.");
+        }
+
+        var paymentSettings = order.EkomPaymentSettings;
+        var siminnPaySettings = paymentSettings.CustomSettings.ContainsKey(typeof(SiminnPaySettings))
+                ? paymentSettings.CustomSettings[typeof(SiminnPaySettings)] as SiminnPaySettings
+                : new SiminnPaySettings();
+
+        _uService.PopulatePaymentProviderProperties(
+            paymentSettings,
+            Payment._ppNodeName,
+            siminnPaySettings,
+            SiminnPaySettings.Properties);
+
+        var svc = new SiminnPayService(siminnPaySettings.ApiKey, siminnPaySettings.ApiUrl, _logger);
+        var initialStatus = await svc.GetStatus(siminnPayOrderKey);
+
+        _logger.LogDebug("SiminnPay Status Requested - Status: {Status}", initialStatus.Status);
+
+        if (initialStatus.Status == SiminnPayStatus.Expired
+        || initialStatus.Status == SiminnPayStatus.CancelledByCustomer)
+        {
+            _logger.LogDebug("SiminnPay Status Requested - Status expired or cancelled, updated siminnPayOrder");
+        }
+
+        return new JsonResult(new SiminnPayStatusView(order, initialStatus));
     }
 }

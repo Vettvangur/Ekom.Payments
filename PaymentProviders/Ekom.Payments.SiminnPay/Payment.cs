@@ -102,11 +102,6 @@ public class Payment : IPaymentProvider
                 _httpCtx
             ).ConfigureAwait(false);
 
-            using (var db = _dbFac.GetDatabase())
-            {
-                await db.InsertAsync(payOrder).ConfigureAwait(false);
-            }
-
             if (order.Status == SiminnPayStatus.WaitingForNewAmount)
             {
                 throw new NotImplementedException("SiminnPayStatus.WaitingForNewAmount");
