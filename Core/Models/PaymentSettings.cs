@@ -12,7 +12,13 @@ public class PaymentSettings : PaymentSettingsBase<PaymentSettings>
     /// </summary>
     [PaymentSettingsIgnore]
     public required Guid OrderUniqueId { get; set; }
-
+    
+    /// <summary>
+    /// Order number, used to identify order in payment provider callback.
+    /// </summary>
+    [PaymentSettingsIgnore]
+    public required string OrderNumber { get; set; }
+    
     /// <summary>
     /// Chooses a specific payment provider node.
     /// Useful when you have multiple umbraco nodes targetting the same base payment provider.
