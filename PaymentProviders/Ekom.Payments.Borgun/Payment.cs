@@ -152,7 +152,7 @@ class Payment : IPaymentProvider
             ).ConfigureAwait(false);
 
             // Borgun only supports specific types of order id's
-            var borgunOrderId = orderStatus.UniqueId.ToString().Split('-').Last();
+            var borgunOrderId = string.IsNullOrEmpty(paymentSettings.OrderNumber) ? orderStatus.UniqueId.ToString().Split('-').Last() : paymentSettings.OrderNumber;
 
             ArgumentNullException.ThrowIfNull(borgunSettings.SecretCode);
 

@@ -71,6 +71,7 @@ public class BorgunResponseController : ControllerBase
             _logger.LogInformation("Borgun Payment Response - {OrderID}", orderId);
 
             OrderStatus? order = await _orderService.GetAsync(orderId);
+            
             if (order == null)
             {
                 _logger.LogWarning("Borgun Payment Response - Unable to find order {OrderId}", orderId);
@@ -85,21 +86,26 @@ public class BorgunResponseController : ControllerBase
             }
 
             var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
-            var borgunSettings = JsonConvert.DeserializeObject<BorgunSettings>(order.EkomPaymentProviderData);
 
+            ArgumentNullException.ThrowIfNull(paymentSettings);
+            
+            var borgunSettings = JsonConvert.DeserializeObject<BorgunSettings>(order.EkomPaymentProviderData);
+            
+            ArgumentNullException.ThrowIfNull(borgunSettings);
+            
             var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
 
-            string orderAmount = FormatPrice(order.Amount);
+            var orderAmount = FormatPrice(order.Amount);
 
-            string orderhashcheck = CryptoHelpers.GetHMACSHA256(borgunSettings.SecretCode,
+            var orderhashcheck = CryptoHelpers.GetHMACSHA256(borgunSettings.SecretCode,
                 new CheckHashMessage(borgunResponse.OrderId, orderAmount, paymentSettings.Currency).Message);
 
             _logger.LogInformation(
-                "Borgun Payment Response - Validating orderid: {OrderId} and amount: {OrderAmount}",
+                "Borgun Payment Response - Validating orderId: {OrderId} and amount: {OrderAmount}",
                 orderId,
                 orderAmount);
 
-            if (string.Compare(borgunResponse.OrderHash, orderhashcheck, true) == 0)
+            if (string.Compare(borgunResponse.OrderHash, orderhashcheck, StringComparison.OrdinalIgnoreCase) == 0)
             {
                 _logger.LogInformation("Borgun Payment Response - OrderHash Validation Success");
 
@@ -111,7 +117,7 @@ public class BorgunResponseController : ControllerBase
                         Date = DateTime.Now,
                         CustomData = borgunResponse.AuthorizationCode,
                         CardNumber = borgunResponse.CreditCardNumber,
-                        Amount = order.Amount.ToString(),
+                        Amount = order.Amount.ToString(CultureInfo.InvariantCulture),
                     };
 
                     await using var db = _dbFac.GetDatabase();
