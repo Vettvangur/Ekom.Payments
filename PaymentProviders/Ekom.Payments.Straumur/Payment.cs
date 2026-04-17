@@ -169,23 +169,16 @@ public class Payment : IPaymentProvider
 
             var httpClient = _httpClientFactory.CreateClient();
 
+            ArgumentException.ThrowIfNullOrEmpty(straumurSettings.ApiKey);
+            
             httpClient.DefaultRequestHeaders.Add("X-API-key", straumurSettings.ApiKey);
 
             var responseMessage = await httpClient.PostAsJsonAsync(straumurSettings.PaymentPageUrl, request);
 
             var responseContent = await responseMessage.Content.ReadAsStringAsync();
-
-            try
-            {
-                responseMessage.EnsureSuccessStatusCode();
-            }
-            catch(Exception ex)
-            {
-                _logger.LogError(ex, "Straumur Payment Request Error Content", responseContent);
-
-                throw;
-            }
-
+            
+            responseMessage.EnsureSuccessStatusCode();
+            
             var response = JsonSerializer.Deserialize<PaymentRequestResponse>(responseContent);
 
             var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
@@ -194,7 +187,7 @@ public class Payment : IPaymentProvider
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Straumur Payment Request - Payment Request Failed");
+            _logger.LogError(ex, "Straumur Payment Request - Payment Request Failed. OrderId: " + paymentSettings.OrderUniqueId + " OrderNumber: " + paymentSettings.OrderNumber);
             await Events.OnErrorAsync(this, new ErrorEventArgs
             {
                 Exception = ex,
@@ -203,7 +196,7 @@ public class Payment : IPaymentProvider
         }
     }
 
-    public static string ParseSupportedLanguages(string language)
+    private static string ParseSupportedLanguages(string language)
     {
         var parsed
             = CultureInfo.GetCultureInfo(language).TwoLetterISOLanguageName.ToUpper();
