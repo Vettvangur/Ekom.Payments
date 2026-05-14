@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Ekom.Payments.Straumur;
 /// <summary>
 /// Represents the details of a payment transaction.
@@ -15,7 +17,7 @@ public class Response
     public string PayfacReference { get; set; }
 
     /// <summary>
-    /// The identifier for the transaction provided by you, the merchant, allowing for correlation with the merchant’s system.
+    /// The identifier for the transaction provided by you, the merchant, allowing for correlation with the merchant's system.
     /// </summary>
     public string? MerchantReference { get; set; }
 
@@ -40,7 +42,7 @@ public class Response
     public string Success { get; set; }
 
     /// <summary>
-    /// A cryptographic signature generated using a secret, enabling verification of the message authenticity and ensuring it hasn’t been tampered with/
+    /// A cryptographic signature generated using a secret, enabling verification of the message authenticity and ensuring it hasn't been tampered with/
     /// </summary>
     public string HmacSignature { get; set; }
 
@@ -50,7 +52,6 @@ public class Response
     public PaymentEventDetails AdditionalData { get; set; }
 }
 
-
 /// <summary>
 /// Represents the details of a payment event.
 /// </summary>
@@ -59,6 +60,7 @@ public class PaymentEventDetails
     /// <summary>
     /// A string representing the type of event that occurred. (Authorization/Capture/Adjustment/Refund)
     /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public PaymentEvent EventType { get; set; }
 
     /// <summary>
@@ -101,14 +103,24 @@ public class PaymentEventDetails
     /// </summary>
     public string? Token { get; set; }
 
-}
     /// <summary>
-    /// Represents different types of payment events.
+    /// Tokenized card summary. (nullable string)
     /// </summary>
+    public string? TokenizedCardSummary { get; set; }
+
+    /// <summary>
+    /// Card expiry date. (nullable string)
+    /// </summary>
+    public string? CardExpiryDate { get; set; }
+}
+
+/// <summary>
+/// Represents different types of payment events.
+/// </summary>
 public enum PaymentEvent
 {
     /// <summary>
-    /// This event indicates that funds have been reserved from the customer's account for a specific amount. If no specific capture action is set, the system will automatically capture the authorized funds after a short period. In that case we will not send Capture event.
+    /// This event indicates that funds have been reserved from the customer's account for a specific amount.
     /// </summary>
     Authorization,
 
@@ -123,7 +135,7 @@ public enum PaymentEvent
     Adjustment,
 
     /// <summary>
-    /// This event represents a notification that the refund is processed. It can take up to 40 business days for the funds to be returned to the customer's account, depending on the payment method.
+    /// This event represents a notification that the refund is processed.
     /// </summary>
     Refund,
 
