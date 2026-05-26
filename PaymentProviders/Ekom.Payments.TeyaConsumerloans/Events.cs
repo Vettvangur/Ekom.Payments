@@ -12,7 +12,7 @@ public static class Events
     internal static async Task OnSuccessAsync(object sender, SuccessEventArgs successEventArgs)
     {
         Success?.Invoke(sender, successEventArgs);
-        await global::Ekom.Payments.Events.OnSuccessAsync(sender, successEventArgs);
+        await Payments.Events.OnSuccessAsync(sender, successEventArgs);
     }
 
     /// <summary>
@@ -21,7 +21,7 @@ public static class Events
     internal static async Task OnErrorAsync(object sender, ErrorEventArgs errorEventArgs)
     {
         Error?.Invoke(sender, errorEventArgs);
-        await global::Ekom.Payments.Events.OnErrorAsync(sender, errorEventArgs);
+        await Payments.Events.OnErrorAsync(sender, errorEventArgs);
     }
 
     /// <summary>
