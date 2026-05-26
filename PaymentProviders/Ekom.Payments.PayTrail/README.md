@@ -49,6 +49,26 @@ AccountId: 375917
 SecretKey: SAIPPUAKAUPPIAS
 ```
 
+## appsettings.json example
+
+PayTrail settings can also be configured under `Ekom` -> `Payments` -> `payTrail`:
+
+```json
+{
+  "Ekom": {
+    "Payments": {
+      "payTrail": {
+        "accountId": "375917",
+        "secretKey": "SAIPPUAKAUPPIAS",
+        "apiBaseUrl": "https://services.paytrail.com",
+        "algorithm": "sha256",
+        "platformName": "ekom-vettvangur"
+      }
+    }
+  }
+}
+```
+
 ## Code configuration example
 
 ```csharp

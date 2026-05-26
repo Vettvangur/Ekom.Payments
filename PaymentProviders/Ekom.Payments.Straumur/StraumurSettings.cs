@@ -9,7 +9,7 @@ public class StraumurSettings : PaymentSettingsBase<StraumurSettings>
     public string HmacKey { get; set; }
     /// <summary>
     /// Dev https://checkout-api.staging.straumur.is/api/v1/hostedcheckout
-    /// Prod https://checkout-api.straumur.is/api/v1/hostedcheckout
+    /// Prod https://greidslugatt.straumur.is/api/v1/hostedcheckout
     /// </summary>
     public Uri PaymentPageUrl { get; set; }
 
