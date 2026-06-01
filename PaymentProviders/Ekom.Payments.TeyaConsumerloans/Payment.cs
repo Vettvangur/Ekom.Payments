@@ -82,6 +82,20 @@ public class Payment : IPaymentProvider
 
             var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
 
+            //var tokenRequest = new TokenRequest
+            //{
+            //    SocialSecurityNumber = paymentSettings.CustomerInfo.NationalRegistryId,
+            //    Email = paymentSettings.CustomerInfo.Email,
+            //    PhoneNumber = paymentSettings.CustomerInfo.PhoneNumber,
+            //    ProgressValidMinutes = 5,
+            //    TokenValidMinutes = 2,
+            //    LoanInformation =
+            //    {
+            //        MerchantNumber = teyaSettings.MerchantId,
+            //        LoanTypeId
+            //    }
+            //};
+
             var request = new LoanApplicationRequest
             {
                 Reference = !string.IsNullOrEmpty(paymentSettings.OrderNumber)

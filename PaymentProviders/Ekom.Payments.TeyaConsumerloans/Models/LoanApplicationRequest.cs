@@ -93,3 +93,25 @@ public class LoanTokenResponse
     [JsonPropertyName("token")]
     public string Token { get; set; } = string.Empty;
 }
+
+public class TokenRequest
+{
+    public string? SocialSecurityNumber { get; set; }
+    public string? Email { get; set; }
+    public string? PhoneNumber { get; set; }
+    public required int ProgressValidMinutes { get; set; }
+    public required int TokenValidMinutes { get; set; }
+    public required OnlineLoan LoanInformation { get; set; }
+}
+
+public class OnlineLoan
+{
+    public required string MerchantNumber { get; set; }
+    public required int LoanTypeId { get; set; }
+    public required decimal Amount { get; set; }
+    public required string Description { get; set; }
+    public required int NumberOfPayments { get; set; }
+    public required bool FlexibleNumberOfPayments { get; set; }
+    public required string SuccessUrl { get; set; }
+    public required string CancelUrl { get; set; }
+}
