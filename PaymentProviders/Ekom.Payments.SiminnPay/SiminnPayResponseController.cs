@@ -112,7 +112,7 @@ public class SiminnPayResponseController : ControllerBase
                     {
                         Id = order.UniqueId,
                         Date = DateTime.Now,
-                        CustomData = notificationCallBack.TransactionDetails.TransactionId,
+                        CustomData = notificationCallBack.TransactionDetails?.TransactionId ?? "",
                         Amount = order.Amount.ToString(currencyFormat),
                     };
 
