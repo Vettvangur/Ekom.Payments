@@ -21,7 +21,7 @@ namespace Ekom.Payments.SiminnPay.apimodels
         public string CardPaymentType { get; set; }
 
         [DataMember(Name = "cardLast4", EmitDefaultValue = false)]
-        public string CardLast4 { get; set; }
+        public string? CardLast4 { get; set; } = null;
 
         [DataMember(Name = "acquirerAuthCode", EmitDefaultValue = false)]
         public string AcquirerAuthCode { get; set; }
