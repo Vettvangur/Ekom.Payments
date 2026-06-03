@@ -35,6 +35,8 @@ class EnsureTablesExist
             db.Execute($"CREATE UNIQUE NONCLUSTERED INDEX [IX_EkomPaymentOrders_UniqueId] ON EkomPaymentOrders ( [UniqueId] ASC )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, IGNORE_DUP_KEY = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]");
         }
 
+        db.Execute("ALTER TABLE EkomPaymentOrders ALTER COLUMN Amount DECIMAL(18,2) NOT NULL");
+
         if (!dbSchema.Tables.Any(t => t.TableName == "EkomPayments"))
         {
             db.CreateTable<PaymentData>();
