@@ -93,13 +93,11 @@ public class PayTrailResponseController : ControllerBase
                     return BadRequest();
                 }
 
-                if (!order.Paid)
+                if (await TryMarkOrderPaidAsync(order).ConfigureAwait(false))
                 {
                     await SavePaymentDataAsync(order, callback, parameters, expectedOrderAmount).ConfigureAwait(false);
 
                     order.Paid = true;
-                    await _orderService.UpdateAsync(order).ConfigureAwait(false);
-
                     await Events.OnSuccessAsync(this, new SuccessEventArgs
                     {
                         OrderStatus = order,
@@ -163,6 +161,18 @@ public class PayTrailResponseController : ControllerBase
         return orderLines is { Count: > 0 }
             ? orderLines.Sum(x => x.GrandTotal)
             : order.Amount;
+    }
+
+    async Task<bool> TryMarkOrderPaidAsync(OrderStatus order)
+    {
+        using var db = _dbFac.GetDatabase();
+        var updatedRows = await db.OrderStatus
+            .Where(x => x.UniqueId == order.UniqueId && !x.Paid)
+            .Set(x => x.Paid, true)
+            .UpdateAsync()
+            .ConfigureAwait(false);
+
+        return updatedRows == 1;
     }
 
     static PayTrailCallback? CreateCallback(IReadOnlyDictionary<string, string> parameters)
