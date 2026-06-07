@@ -16,6 +16,11 @@ public class OrderItem
     public decimal Price { get; set; }
 
     /// <summary>
+    /// 
+    /// </summary>
+    public decimal VAT { get; set; }
+    
+    /// <summary>
     /// Discount in percentages for <see cref="OrderItem"/>
     /// </summary>
     public int Discount { get; set; }
