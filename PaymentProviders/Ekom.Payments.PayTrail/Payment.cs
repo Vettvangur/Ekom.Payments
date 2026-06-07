@@ -94,7 +94,7 @@ public class Payment : IPaymentProvider
                 {
                     UnitPrice = ToMinorUnits(lineItem.Price, paymentSettings.Currency),
                     Units = lineItem.Quantity,
-                    VatPercentage = 0,
+                    VatPercentage = CalculateVatPercentage(lineItem),
                     ProductCode = index.ToString(CultureInfo.InvariantCulture),
                     Description = lineItem.Title,
                 }).ToList(),
@@ -144,6 +144,23 @@ public class Payment : IPaymentProvider
         return currency.Equals("ISK", StringComparison.InvariantCultureIgnoreCase)
             || currency.Equals("JPY", StringComparison.InvariantCultureIgnoreCase)
             || currency.Equals("KRW", StringComparison.InvariantCultureIgnoreCase);
+    }
+
+    internal static decimal CalculateVatPercentage(OrderItem lineItem)
+    {
+        if (lineItem.VAT <= 0)
+        {
+            return 0;
+        }
+
+        var netAmount = lineItem.GrandTotal - lineItem.VAT;
+
+        if (netAmount <= 0)
+        {
+            return 0;
+        }
+
+        return Math.Round(lineItem.VAT / netAmount * 100, 2, MidpointRounding.AwayFromZero);
     }
 
     static PaymentCustomer? CreateCustomer(CustomerInfo customerInfo)
