@@ -66,7 +66,7 @@ public class Payment : IPaymentProvider
 
             var orderLines = paymentSettings.Orders.ToList();
             var total = orderLines.Sum(x => x.GrandTotal);
-            var amountMinorUnits = ToMinorUnits(total, paymentSettings.Currency);
+            decimal amountMinorUnits = ToMinorUnits(total, paymentSettings.Currency);
 
             var orderStatus = await _orderService.InsertAsync(
                 total,
@@ -156,7 +156,7 @@ public class Payment : IPaymentProvider
         return Math.Round(lineItem.VAT / netAmount * 100, 1, MidpointRounding.AwayFromZero);
     }
 
-    internal static List<PaymentItem> CreatePaymentItems(IReadOnlyList<OrderItem> orderLines, string currency, int amountMinorUnits)
+    internal static List<PaymentItem> CreatePaymentItems(IReadOnlyList<OrderItem> orderLines, string currency, decimal amountMinorUnits)
     {
         var items = orderLines
             .Select((lineItem, index) => CreatePaymentItem(lineItem, index, currency))
@@ -194,7 +194,7 @@ public class Payment : IPaymentProvider
         };
     }
 
-    static void AdjustLastPaymentItemForTotalRounding(List<PaymentItem> items, int amountMinorUnits)
+    static void AdjustLastPaymentItemForTotalRounding(List<PaymentItem> items, decimal amountMinorUnits)
     {
         if (items.Count == 0)
         {
