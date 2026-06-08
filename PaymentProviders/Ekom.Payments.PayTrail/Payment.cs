@@ -160,7 +160,7 @@ public class Payment : IPaymentProvider
             return 0;
         }
 
-        return Math.Round(lineItem.VAT / netAmount * 100, 2, MidpointRounding.AwayFromZero);
+        return Math.Round(lineItem.VAT / netAmount * 100, 1, MidpointRounding.AwayFromZero);
     }
 
     static PaymentCustomer? CreateCustomer(CustomerInfo customerInfo)
