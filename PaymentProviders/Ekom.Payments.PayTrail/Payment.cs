@@ -64,7 +64,9 @@ public class Payment : IPaymentProvider
             ArgumentException.ThrowIfNullOrEmpty(payTrailSettings.SecretKey);
             ArgumentNullException.ThrowIfNull(payTrailSettings.ApiBaseUrl);
 
-            var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
+            var orderLines = paymentSettings.Orders.ToList();
+            var total = orderLines.Sum(x => x.GrandTotal);
+            var amountMinorUnits = ToMinorUnits(total, paymentSettings.Currency);
 
             var orderStatus = await _orderService.InsertAsync(
                 total,
@@ -74,10 +76,6 @@ public class Payment : IPaymentProvider
                 _httpCtx
             ).ConfigureAwait(false);
 
-            paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
-
-            var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
             var reportUrl = paymentSettings.ReportUrl == null
                 ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request)
                 : PaymentsUriHelper.EnsureFullUri(paymentSettings.ReportUrl, _httpCtx.Request);
@@ -87,17 +85,10 @@ public class Payment : IPaymentProvider
             {
                 Stamp = orderStatus.UniqueId.ToString(),
                 Reference = !string.IsNullOrEmpty(paymentSettings.OrderNumber) ? paymentSettings.OrderNumber : orderStatus.ReferenceId.ToString(CultureInfo.InvariantCulture),
-                Amount = ToMinorUnits(total, paymentSettings.Currency),
+                Amount = amountMinorUnits,
                 Currency = paymentSettings.Currency,
                 Language = ParseSupportedLanguage(paymentSettings.Language),
-                Items = paymentSettings.Orders.Select((lineItem, index) => new PaymentItem
-                {
-                    UnitPrice = ToMinorUnits(lineItem.Price, paymentSettings.Currency),
-                    Units = lineItem.Quantity,
-                    VatPercentage = CalculateVatPercentage(lineItem),
-                    ProductCode = index.ToString(CultureInfo.InvariantCulture),
-                    Description = lineItem.Title,
-                }).ToList(),
+                Items = CreatePaymentItems(orderLines, paymentSettings.Currency, amountMinorUnits),
                 Customer = CreateCustomer(paymentSettings.CustomerInfo),
                 RedirectUrls = new PaymentUrls
                 {
@@ -110,6 +101,8 @@ public class Payment : IPaymentProvider
                     Cancel = callbackUrl.ToString(),
                 },
             };
+
+            LogPaymentItemAmountMismatch(paymentSettings, createPaymentRequest);
 
             var svc = new PayTrailService(_httpClientFactory, _logger);
             var response = await svc.CreatePaymentAsync(payTrailSettings, createPaymentRequest).ConfigureAwait(false);
@@ -163,6 +156,71 @@ public class Payment : IPaymentProvider
         return Math.Round(lineItem.VAT / netAmount * 100, 1, MidpointRounding.AwayFromZero);
     }
 
+    internal static List<PaymentItem> CreatePaymentItems(IReadOnlyList<OrderItem> orderLines, string currency, int amountMinorUnits)
+    {
+        var items = orderLines
+            .Select((lineItem, index) => CreatePaymentItem(lineItem, index, currency))
+            .ToList();
+
+        AdjustLastPaymentItemForTotalRounding(items, amountMinorUnits);
+
+        return items;
+    }
+
+    static PaymentItem CreatePaymentItem(OrderItem lineItem, int index, string currency)
+    {
+        var lineTotalMinorUnits = ToMinorUnits(lineItem.GrandTotal, currency);
+        var units = 1m;
+        var unitPriceMinorUnits = lineTotalMinorUnits;
+
+        if (lineItem.Quantity > 0)
+        {
+            var calculatedUnitPriceMinorUnits = lineTotalMinorUnits / lineItem.Quantity;
+
+            if (calculatedUnitPriceMinorUnits == Math.Truncate(calculatedUnitPriceMinorUnits))
+            {
+                units = lineItem.Quantity;
+                unitPriceMinorUnits = Convert.ToInt32(calculatedUnitPriceMinorUnits);
+            }
+        }
+
+        return new PaymentItem
+        {
+            UnitPrice = unitPriceMinorUnits,
+            Units = units,
+            VatPercentage = CalculateVatPercentage(lineItem),
+            ProductCode = index.ToString(CultureInfo.InvariantCulture),
+            Description = lineItem.Title,
+        };
+    }
+
+    static void AdjustLastPaymentItemForTotalRounding(List<PaymentItem> items, int amountMinorUnits)
+    {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        var itemsTotalMinorUnits = CalculateItemsTotalMinorUnits(items);
+        var differenceMinorUnits = amountMinorUnits - itemsTotalMinorUnits;
+
+        if (differenceMinorUnits == 0)
+        {
+            return;
+        }
+
+        var lastItem = items[^1];
+        var adjustedLineTotalMinorUnits = lastItem.UnitPrice * lastItem.Units + differenceMinorUnits;
+
+        lastItem.UnitPrice = Convert.ToInt32(adjustedLineTotalMinorUnits);
+        lastItem.Units = 1;
+    }
+
+    static decimal CalculateItemsTotalMinorUnits(IEnumerable<PaymentItem> items)
+    {
+        return items.Sum(x => x.UnitPrice * x.Units);
+    }
+
     static PaymentCustomer? CreateCustomer(CustomerInfo customerInfo)
     {
         if (customerInfo == null)
@@ -192,5 +250,52 @@ public class Payment : IPaymentProvider
             "EN" => "EN",
             _ => "EN",
         };
+    }
+
+    void LogPaymentItemAmountMismatch(PaymentSettings paymentSettings, CreatePaymentRequest request)
+    {
+        var items = request.Items.ToList();
+        var requestAmountMinorUnits = request.Amount;
+        var itemsTotalMinorUnits = CalculateItemsTotalMinorUnits(items);
+        var differenceMinorUnits = requestAmountMinorUnits - itemsTotalMinorUnits;
+
+        if (differenceMinorUnits == 0)
+        {
+            return;
+        }
+
+        var orderLines = paymentSettings.Orders?.ToList() ?? [];
+
+        _logger.LogWarning(
+            "PayTrail Payment Request - Amount mismatch before sending. Amount: {Amount} ItemsTotal: {ItemsTotal} Difference: {Difference} Currency: {Currency} OrderId: {OrderId} OrderNumber: {OrderNumber} OrderLines: {@OrderLines} PayTrailItems: {@PayTrailItems}",
+            requestAmountMinorUnits,
+            itemsTotalMinorUnits,
+            differenceMinorUnits,
+            paymentSettings.Currency,
+            paymentSettings.OrderUniqueId,
+            paymentSettings.OrderNumber,
+            orderLines.Select((lineItem, index) => new
+            {
+                Index = index,
+                lineItem.Title,
+                lineItem.Price,
+                lineItem.Quantity,
+                lineItem.GrandTotal,
+                lineItem.VAT,
+                lineItem.Discount,
+                ExpectedLineTotal = ToMinorUnits(lineItem.GrandTotal, paymentSettings.Currency),
+                SentUnitPrice = index < items.Count ? items[index].UnitPrice : 0,
+                SentLineTotal = index < items.Count ? items[index].UnitPrice * items[index].Units : 0,
+            }).ToList(),
+            items.Select((item, index) => new
+            {
+                Index = index,
+                item.Description,
+                item.ProductCode,
+                item.UnitPrice,
+                item.Units,
+                LineTotal = item.UnitPrice * item.Units,
+                item.VatPercentage,
+            }).ToList());
     }
 }
