@@ -39,7 +39,7 @@ public class PaymentItem
     public int UnitPrice { get; set; }
 
     [JsonPropertyName("units")]
-    public int Units { get; set; }
+    public decimal Units { get; set; }
 
     [JsonPropertyName("vatPercentage")]
     public decimal VatPercentage { get; set; }
