@@ -44,7 +44,13 @@ public class PayTrailService
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogError("PayTrail create payment failed. Status: {StatusCode} Body: {ResponseBody}", response.StatusCode, responseBody);
+            _logger.LogError(
+                "PayTrail create payment failed. Status: {StatusCode} Body: {ResponseBody} RequestUrl: {RequestUrl} RequestBody: {RequestBody} RequestHeaders: {@RequestHeaders}",
+                response.StatusCode,
+                responseBody,
+                httpRequest.RequestUri,
+                body,
+                CreateLogSafeHeaders(headers));
             response.EnsureSuccessStatusCode();
         }
 
@@ -56,5 +62,12 @@ public class PayTrailService
         }
 
         return createPaymentResponse;
+    }
+
+    static IDictionary<string, string> CreateLogSafeHeaders(IDictionary<string, string> headers)
+    {
+        return headers.ToDictionary(
+            x => x.Key,
+            x => x.Key.Equals("signature", StringComparison.InvariantCultureIgnoreCase) ? "[redacted]" : x.Value);
     }
 }

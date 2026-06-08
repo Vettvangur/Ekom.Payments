@@ -11,7 +11,7 @@ public class CreatePaymentRequest
     public string Reference { get; set; } = string.Empty;
 
     [JsonPropertyName("amount")]
-    public int Amount { get; set; }
+    public decimal Amount { get; set; }
 
     [JsonPropertyName("currency")]
     public string Currency { get; set; } = string.Empty;
