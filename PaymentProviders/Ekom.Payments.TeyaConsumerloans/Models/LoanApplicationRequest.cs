@@ -79,7 +79,7 @@ public class LoanApplicationItem
     public string Description { get; set; } = string.Empty;
 
     [JsonPropertyName("quantity")]
-    public int Quantity { get; set; }
+    public decimal Quantity { get; set; }
 
     [JsonPropertyName("unitPrice")]
     public decimal UnitPrice { get; set; }
