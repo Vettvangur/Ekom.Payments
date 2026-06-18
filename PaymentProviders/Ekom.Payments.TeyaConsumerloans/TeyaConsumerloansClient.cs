@@ -23,13 +23,15 @@ internal class TeyaConsumerloansClient
         _logger = logger;
     }
 
-    public async Task<LoanTokenResponse> CreateWebTokenAsync(TeyaConsumerloansSettings settings, LoanApplicationRequest request)
+    public async Task<LoanTokenResponse> CreateWebTokenAsync(TeyaConsumerloansSettings settings, TokenRequest request)
     {
         var httpClient = _httpClientFactory.CreateClient();
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, new Uri(settings.ApiBaseUrl, "online/token/web"))
         {
             Content = JsonContent.Create(request, options: JsonSerializerOptions),
         };
+
+        var json = JsonSerializer.Serialize(request, options: JsonSerializerOptions);
 
         if (!string.IsNullOrWhiteSpace(settings.ApiKey))
         {

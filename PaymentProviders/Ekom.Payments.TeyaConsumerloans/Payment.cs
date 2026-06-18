@@ -82,7 +82,7 @@ public class Payment : IPaymentProvider
 
             var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
 
-            var request = new LoanApplicationRequest
+            var requestt = new LoanApplicationRequest
             {
                 Reference = !string.IsNullOrEmpty(paymentSettings.OrderNumber)
                     ? paymentSettings.OrderNumber
@@ -103,6 +103,26 @@ public class Payment : IPaymentProvider
                     UnitPrice = x.Price,
                     Amount = x.GrandTotal,
                 }).ToList(),
+            };
+
+            var request = new TokenRequest
+            {
+                SocialSecurityNumber = paymentSettings.CustomerInfo.NationalRegistryId,
+                Email = paymentSettings.CustomerInfo.Email,
+                PhoneNumber = paymentSettings.CustomerInfo.PhoneNumber,
+                ProgressValidMinutes = teyaSettings.ProgressValidMinutes,
+                TokenValidMinutes = teyaSettings.TokenValidMinutes,
+                LoanInformation = new OnlineLoan
+                {
+                    MerchantNumber = teyaSettings.MerchantNumber,
+                    LoanTypeId = teyaSettings.LoanTypeId,
+                    Amount = total,
+                    Description = paymentSettings.OrderNumber,
+                    NumberOfPayments = teyaSettings.NumberOfPayments,
+                    FlexibleNumberOfPayments = teyaSettings.FlexibleNumberOfPayments,
+                    SuccessUrl = paymentSettings.SuccessUrl.ToString(),
+                    CancelUrl = cancelUrl.ToString(),
+                }
             };
 
             var client = new TeyaConsumerloansClient(_httpClientFactory, _logger);

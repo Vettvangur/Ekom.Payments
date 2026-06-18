@@ -2,45 +2,30 @@ using System.Text.Json.Serialization;
 
 namespace Ekom.Payments.TeyaConsumerloans.Models;
 
-public class LoanApplicationRequest
+/// <summary>
+/// Documentation: https://docs.borgun.is/consumerloans/clapiv3/#tokenrequest
+/// </summary>
+public class TokenRequest
 {
-    [JsonPropertyName("reference")]
-    public string Reference { get; set; } = string.Empty;
-
-    [JsonPropertyName("amount")]
-    public decimal Amount { get; set; }
-
-    [JsonPropertyName("currency")]
-    public string Currency { get; set; } = string.Empty;
-
-    [JsonPropertyName("language")]
-    public string Language { get; set; } = string.Empty;
-
-    [JsonPropertyName("successUrl")]
-    public string SuccessUrl { get; set; } = string.Empty;
-
-    [JsonPropertyName("cancelUrl")]
-    public string CancelUrl { get; set; } = string.Empty;
-
-    [JsonPropertyName("merchantId")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? MerchantId { get; set; }
-
-    [JsonPropertyName("storeId")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? StoreId { get; set; }
-
-    [JsonPropertyName("productCode")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? ProductCode { get; set; }
-
-    [JsonPropertyName("customer")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public LoanCustomer? Customer { get; set; }
-
-    [JsonPropertyName("items")]
-    public List<LoanApplicationItem> Items { get; set; } = [];
+    public string? SocialSecurityNumber { get; set; }
+    public string? Email { get; set; }
+    public string? PhoneNumber { get; set; }
+    public required int ProgressValidMinutes { get; set; }
+    public required int TokenValidMinutes { get; set; }
+    public required OnlineLoan LoanInformation { get; set; }
 }
+
+public class OnlineLoan
+{
+    public required string MerchantNumber { get; set; }
+    public required int LoanTypeId { get; set; }
+    public required decimal Amount { get; set; }
+    public required string Description { get; set; }
+    public required int NumberOfPayments { get; set; }
+    public required bool FlexibleNumberOfPayments { get; set; }
+    public required string SuccessUrl { get; set; }
+    public required string CancelUrl { get; set; }
+} 
 
 public class LoanCustomer
 {
