@@ -2,6 +2,7 @@ using Ekom.Payments.Helpers;
 using Ekom.Payments.TeyaConsumerloans.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Ekom.Payments.TeyaConsumerloans;
@@ -29,7 +30,7 @@ public class Payment : IPaymentProvider
         IHttpContextAccessor httpContext,
         IHttpClientFactory httpClientFactory,
         IConfiguration config,
-        TeyaConsumerloansPollingService pollingService)
+        IServiceProvider serviceProvider)
     {
         _logger = logger;
         _uService = uService;
@@ -37,7 +38,7 @@ public class Payment : IPaymentProvider
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
         _httpClientFactory = httpClientFactory;
         _config = config;
-        _pollingService = pollingService;
+        _pollingService = serviceProvider.GetService<TeyaConsumerloansPollingService>() ?? throw new InvalidOperationException("TeyaConsumerloansPollingService is not registered.");
     }
 
     public async Task<string> RequestAsync(PaymentSettings paymentSettings)
@@ -63,20 +64,11 @@ public class Payment : IPaymentProvider
 
             ValidateLoanSettings(teyaSettings);
 
+            var successUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
+
+            var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
+
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
-
-            var orderStatus = await _orderService.InsertAsync(
-                total,
-                paymentSettings,
-                teyaSettings,
-                paymentSettings.OrderUniqueId.ToString(),
-                _httpCtx
-            ).ConfigureAwait(false);
-
-            paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
-
-            paymentSettings.CancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
 
             var request = new TokenRequest
             {
@@ -93,23 +85,34 @@ public class Payment : IPaymentProvider
                     Description = CreateDescription(paymentSettings),
                     NumberOfPayments = teyaSettings.NumberOfPayments!.Value,
                     FlexibleNumberOfPayments = teyaSettings.FlexibleNumberOfPayments!.Value,
-                    SuccessUrl = paymentSettings.SuccessUrl.ToString(),
-                    CancelUrl = paymentSettings.CancelUrl.ToString(),
+                    SuccessUrl = successUrl.ToString(),
+                    CancelUrl = cancelUrl.ToString(),
                 },
             };
 
             var client = new TeyaConsumerloansClient(_httpClientFactory, _logger);
             var token = await client.CreateWebTokenAsync(teyaSettings, request).ConfigureAwait(false);
-            var redirectUrl = new Uri(teyaSettings.LoanPortalUrl!, token);
 
-            orderStatus.EkomPaymentSettings = paymentSettings;
-            orderStatus.CustomData = token;
-            await _orderService.UpdateAsync(orderStatus).ConfigureAwait(false);
+            var orderStatus = await _orderService.InsertAsync(
+                total,
+                paymentSettings,
+                teyaSettings,
+                token,
+                _httpCtx
+            ).ConfigureAwait(false);
 
             _logger.LogInformation("Teya Consumer Loans Payment Request - Amount: {Total} OrderId: {OrderId}", total, orderStatus.UniqueId);
 
-            _pollingService.Enqueue(orderStatus, teyaSettings);
+            var pollingRequest = new PollingRequest
+            { 
+                OrderId = orderStatus.UniqueId,
+                Token = token,
+                RedirectUrl = successUrl,
+                Settings = teyaSettings
+            };
+            _pollingService.Enqueue(pollingRequest);
 
+            var redirectUrl = new Uri(teyaSettings.LoanPortalUrl!, token);
             var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
             return FormHelper.Redirect(redirectUrl.ToString(), cspNonce);
         }

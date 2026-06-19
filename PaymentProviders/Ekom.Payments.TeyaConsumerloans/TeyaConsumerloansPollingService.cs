@@ -1,3 +1,4 @@
+using Ekom.Payments.Helpers;
 using Ekom.Payments.TeyaConsumerloans.Models;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
@@ -10,8 +11,6 @@ using System.Net.Mail;
 using System.Threading.Channels;
 
 namespace Ekom.Payments.TeyaConsumerloans;
-
-internal sealed record PollRequest(OrderStatus Order, TeyaConsumerloansSettings Settings);
 
 /// <summary>
 /// Hosted background service that polls <c>GET /online/status</c> for orders whose
@@ -36,16 +35,16 @@ public class TeyaConsumerloansPollingService : BackgroundService
 
     const string SuccessStatus = "SUCCESS";
 
-    readonly Channel<PollRequest> _queue = Channel.CreateUnbounded<PollRequest>(
+    readonly Channel<PollingRequest> _queue = Channel.CreateUnbounded<PollingRequest>(
         new UnboundedChannelOptions { SingleReader = true });
 
     readonly ILogger<TeyaConsumerloansPollingService> _logger;
-    readonly IHttpClientFactory _httpClientFactory;
     readonly IDatabaseFactory _dbFac;
     readonly IOrderService _orderService;
     readonly PaymentsConfiguration _settings;
     readonly IMailService _mailSvc;
     readonly IHttpContextAccessor _httpContextAccessor;
+    readonly TeyaConsumerloansClient _client;
 
     public TeyaConsumerloansPollingService(
         ILogger<TeyaConsumerloansPollingService> logger,
@@ -57,19 +56,18 @@ public class TeyaConsumerloansPollingService : BackgroundService
         IHttpContextAccessor httpContextAccessor)
     {
         _logger = logger;
-        _httpClientFactory = httpClientFactory;
         _dbFac = dbFac;
         _orderService = orderService;
         _settings = settings;
         _mailSvc = mailSvc;
         _httpContextAccessor = httpContextAccessor;
+        _client = new TeyaConsumerloansClient(httpClientFactory, _logger);
     }
 
     /// <summary>
     /// Enqueues an order for polling. Returns immediately.
     /// </summary>
-    public void Enqueue(OrderStatus order, TeyaConsumerloansSettings settings)
-        => _queue.Writer.TryWrite(new PollRequest(order, settings));
+    public void Enqueue(PollingRequest request) => _queue.Writer.TryWrite(request);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -83,7 +81,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
             // Ownership transfers to PollOrderAsync which disposes it when done.
             var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             cts.CancelAfter(TimeSpan.FromMinutes(req.Settings.TokenValidMinutes!.Value));
-            activeTasks.Add(PollOrderAsync(req.Order, req.Settings, cts));
+            activeTasks.Add(PollOrderAsync(req, cts));
         }
 
         // Drain: wait for all in-flight polls to finish before the host tears down.
@@ -93,36 +91,32 @@ public class TeyaConsumerloansPollingService : BackgroundService
         }
     }
 
-    async Task PollOrderAsync(OrderStatus order, TeyaConsumerloansSettings settings, CancellationTokenSource cts)
+    async Task PollOrderAsync(PollingRequest request, CancellationTokenSource cts)
     {
         // cts is disposed here, after PollAsync finishes, not in the caller.
         using (cts)
         {
-            await PollAsync(order, settings, cts.Token).ConfigureAwait(false);
+            await PollAsync(request, cts.Token).ConfigureAwait(false);
         }
     }
 
-    async Task PollAsync(OrderStatus order, TeyaConsumerloansSettings teyaSettings, CancellationToken cancellationToken)
+    async Task PollAsync(PollingRequest request, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(order.CustomData);
-        var token = order.CustomData;
-
-        var client = new TeyaConsumerloansClient(_httpClientFactory, _logger);
         while (!cancellationToken.IsCancellationRequested)
         {
-            var status = await client.GetStatusAsync(teyaSettings, token).ConfigureAwait(false);
+            var status = await _client.GetStatusAsync(request.Settings, request.Token).ConfigureAwait(false);
 
-            _logger.LogDebug("Teya Consumer Loans Polling Service - OrderId: {OrderId} Status: {Status}", order.UniqueId, status);
+            _logger.LogDebug("Teya Consumer Loans Polling Service - OrderId: {OrderId} Status: {Status}", request.OrderId, status);
 
             if (TerminalStatuses.Contains(status))
             {
-                _logger.LogInformation("Teya Consumer Loans Polling Service - Terminal status {Status} for OrderId: {OrderId}.", status, order.UniqueId);
+                _logger.LogInformation("Teya Consumer Loans Polling Service - Terminal status {Status} for OrderId: {OrderId}.", status, request.OrderId);
                 break;
             }
 
             if (string.Equals(status, SuccessStatus, StringComparison.OrdinalIgnoreCase))
             {
-                await MarkAsPaid(order, teyaSettings).ConfigureAwait(false);
+                await MarkAsPaid(request).ConfigureAwait(false);
                 break;
             }
 
@@ -130,34 +124,34 @@ public class TeyaConsumerloansPollingService : BackgroundService
         }
     }
 
-    async Task MarkAsPaid(OrderStatus order, TeyaConsumerloansSettings teyaSettings)
+    async Task MarkAsPaid(PollingRequest request)
     {
-        var token = order.CustomData;
-        ArgumentNullException.ThrowIfNull(token);
-        ArgumentNullException.ThrowIfNull(teyaSettings.MerchantId);
+        ArgumentNullException.ThrowIfNull(request.Settings.MerchantId);
 
-        _logger.LogInformation("Teya Consumer Loans Response - Start. Token: {Token}", token);
+        _logger.LogInformation("Teya Consumer Loans Response - Start. Token: {Token}", request.Token);
+
+        var order = await _orderService.GetAsync(request.OrderId);
+        if (order == null)
+        {
+            _logger.LogWarning("Teya Consumer Loans Response - Order not found. OrderId: {OrderId}", request.OrderId);
+            return;
+        }
+
+        if (order.Paid)
+        {
+            _logger.LogInformation("Teya Consumer Loans Response - SUCCESS - Previously validated");
+            return;
+        }
 
         try
         {
-            if (order.Paid)
+            var validationRequest = new ValidateRequest
             {
-                _logger.LogInformation("Teya Consumer Loans Response - SUCCESS - Previously validated");
-                return;
-            }
-
-            var redirectUrl = order.EkomPaymentSettings.SuccessUrl;
-            ArgumentNullException.ThrowIfNull(redirectUrl);
-
-            var client = new TeyaConsumerloansClient(_httpClientFactory, _logger);
-            var contractInfo = await client.ValidateLoanAsync(
-                teyaSettings,
-                new ValidateRequest
-                {
-                    Token = token,
-                    RedirectUrl = redirectUrl.ToString(),
-                    MerchantNumber = teyaSettings.MerchantId,
-                }).ConfigureAwait(false);
+                Token = request.Token,
+                RedirectUrl = $"{request.RedirectUrl}&token={request.Token}",
+                MerchantNumber = request.Settings.MerchantId,
+            };
+            var contractInfo = await _client.ValidateLoanAsync(request.Settings, validationRequest).ConfigureAwait(false);
 
             try
             {
@@ -179,7 +173,6 @@ public class TeyaConsumerloansPollingService : BackgroundService
             }
 
             order.Paid = true;
-            order.CustomData = token;
             await _orderService.UpdateAsync(order).ConfigureAwait(false);
 
             await Events.OnSuccessAsync(this, new SuccessEventArgs
