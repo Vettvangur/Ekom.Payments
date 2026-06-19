@@ -2,8 +2,8 @@ using Ekom.Payments.Helpers;
 using Ekom.Payments.TeyaConsumerloans.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using System.Globalization;
 
 namespace Ekom.Payments.TeyaConsumerloans;
 
@@ -20,6 +20,7 @@ public class Payment : IPaymentProvider
     readonly HttpContext _httpCtx;
     readonly IHttpClientFactory _httpClientFactory;
     readonly IConfiguration _config;
+    readonly TeyaConsumerloansPollingService _pollingService;
 
     public Payment(
         ILogger<Payment> logger,
@@ -28,7 +29,8 @@ public class Payment : IPaymentProvider
         IOrderService orderService,
         IHttpContextAccessor httpContext,
         IHttpClientFactory httpClientFactory,
-        IConfiguration config)
+        IConfiguration config,
+        IServiceProvider serviceProvider)
     {
         _logger = logger;
         _uService = uService;
@@ -36,6 +38,7 @@ public class Payment : IPaymentProvider
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
         _httpClientFactory = httpClientFactory;
         _config = config;
+        _pollingService = serviceProvider.GetService<TeyaConsumerloansPollingService>() ?? throw new InvalidOperationException("TeyaConsumerloansPollingService is not registered.");
     }
 
     public async Task<string> RequestAsync(PaymentSettings paymentSettings)
@@ -59,68 +62,59 @@ public class Payment : IPaymentProvider
                 teyaSettings,
                 TeyaConsumerloansSettings.Properties);
 
-            ArgumentNullException.ThrowIfNull(teyaSettings.ApiBaseUrl);
-            ArgumentNullException.ThrowIfNull(teyaSettings.LoanPortalUrl);
+            ValidateLoanSettings(teyaSettings);
 
-            if (string.IsNullOrWhiteSpace(teyaSettings.Username) && string.IsNullOrWhiteSpace(teyaSettings.ApiKey))
-            {
-                throw new ArgumentException("Either Username/Password or ApiKey must be configured for Teya Consumer Loans.");
-            }
+            var successUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
+
+            var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
 
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
+
+            var request = new TokenRequest
+            {
+                SocialSecurityNumber = paymentSettings.CustomerInfo?.NationalRegistryId,
+                Email = paymentSettings.CustomerInfo?.Email,
+                PhoneNumber = paymentSettings.CustomerInfo?.PhoneNumber,
+                ProgressValidMinutes = teyaSettings.ProgressValidMinutes!.Value,
+                TokenValidMinutes = teyaSettings.TokenValidMinutes!.Value,
+                LoanInformation = new OnlineLoan
+                {
+                    MerchantNumber = teyaSettings.MerchantId!,
+                    LoanTypeId = teyaSettings.LoanTypeId!.Value,
+                    Amount = total,
+                    Description = CreateDescription(paymentSettings),
+                    NumberOfPayments = teyaSettings.NumberOfPayments!.Value,
+                    FlexibleNumberOfPayments = teyaSettings.FlexibleNumberOfPayments!.Value,
+                    SuccessUrl = successUrl.ToString(),
+                    CancelUrl = cancelUrl.ToString(),
+                },
+            };
+
+            var client = new TeyaConsumerloansClient(_httpClientFactory, _logger);
+            var token = await client.CreateWebTokenAsync(teyaSettings, request).ConfigureAwait(false);
 
             var orderStatus = await _orderService.InsertAsync(
                 total,
                 paymentSettings,
                 teyaSettings,
-                paymentSettings.OrderUniqueId.ToString(),
+                token,
                 _httpCtx
             ).ConfigureAwait(false);
 
-            paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
-
-            var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
-
-            var request = new LoanApplicationRequest
-            {
-                Reference = !string.IsNullOrEmpty(paymentSettings.OrderNumber)
-                    ? paymentSettings.OrderNumber
-                    : orderStatus.UniqueId.ToString(),
-                Amount = total,
-                Currency = paymentSettings.Currency,
-                Language = ParseSupportedLanguage(paymentSettings.Language),
-                SuccessUrl = paymentSettings.SuccessUrl.ToString(),
-                CancelUrl = cancelUrl.ToString(),
-                MerchantId = teyaSettings.MerchantId,
-                StoreId = teyaSettings.StoreId,
-                ProductCode = teyaSettings.ProductCode,
-                Customer = CreateCustomer(paymentSettings.CustomerInfo),
-                Items = paymentSettings.Orders.Select(x => new LoanApplicationItem
-                {
-                    Description = x.Title,
-                    Quantity = x.Quantity,
-                    UnitPrice = x.Price,
-                    Amount = x.GrandTotal,
-                }).ToList(),
-            };
-
-            var client = new TeyaConsumerloansClient(_httpClientFactory, _logger);
-            var tokenResponse = await client.CreateWebTokenAsync(teyaSettings, request).ConfigureAwait(false);
-            var redirectUrl = CreateLoanPortalUrl(teyaSettings, tokenResponse.Token);
-
-            orderStatus.CustomData = tokenResponse.Token;
-            await _orderService.UpdateAsync(orderStatus).ConfigureAwait(false);
-
             _logger.LogInformation("Teya Consumer Loans Payment Request - Amount: {Total} OrderId: {OrderId}", total, orderStatus.UniqueId);
 
-            await Events.OnSuccessAsync(this, new SuccessEventArgs
-            {
-                OrderStatus = orderStatus,
-            }).ConfigureAwait(false);
+            var pollingRequest = new PollingRequest
+            { 
+                OrderId = orderStatus.UniqueId,
+                Token = token,
+                RedirectUrl = successUrl,
+                Settings = teyaSettings
+            };
+            _pollingService.Enqueue(pollingRequest);
 
+            var redirectUrl = new Uri(teyaSettings.LoanPortalUrl!, token);
             var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
-            return FormHelper.CreateRequest(new Dictionary<string, string?>(), redirectUrl.ToString(), "GET", cspNonce: cspNonce);
+            return FormHelper.Redirect(redirectUrl.ToString(), cspNonce);
         }
         catch (Exception ex)
         {
@@ -133,43 +127,45 @@ public class Payment : IPaymentProvider
         }
     }
 
-    static Uri CreateLoanPortalUrl(TeyaConsumerloansSettings settings, string token)
+    static void ValidateLoanSettings(TeyaConsumerloansSettings settings)
     {
-        var parameterName = string.IsNullOrWhiteSpace(settings.LoanPortalTokenQueryParameter)
-            ? "token"
-            : settings.LoanPortalTokenQueryParameter;
+        ArgumentNullException.ThrowIfNull(settings.ApiBaseUrl);
+        ArgumentException.ThrowIfNullOrEmpty(settings.Username);
+        ArgumentException.ThrowIfNullOrEmpty(settings.Password);
+        ArgumentException.ThrowIfNullOrEmpty(settings.MerchantId);
+        ArgumentNullException.ThrowIfNull(settings.LoanTypeId);
+        ArgumentNullException.ThrowIfNull(settings.NumberOfPayments);
+        ArgumentNullException.ThrowIfNull(settings.FlexibleNumberOfPayments);
+        ArgumentException.ThrowIfNullOrEmpty(settings.MerchantId);
+        ArgumentNullException.ThrowIfNull(settings.ProgressValidMinutes);
+        ArgumentNullException.ThrowIfNull(settings.TokenValidMinutes);
 
-        var separator = string.IsNullOrEmpty(settings.LoanPortalUrl.Query) ? "?" : "&";
-        return new Uri(settings.LoanPortalUrl + separator + Uri.EscapeDataString(parameterName) + "=" + Uri.EscapeDataString(token));
-    }
-
-    static LoanCustomer? CreateCustomer(CustomerInfo? customerInfo)
-    {
-        if (customerInfo == null)
+        if (settings.LoanTypeId <= 0)
         {
-            return null;
+            throw new ArgumentOutOfRangeException(nameof(settings.LoanTypeId), settings.LoanTypeId, "Teya Consumer Loans loanTypeId must be configured.");
         }
 
-        return new LoanCustomer
+        if (settings.NumberOfPayments <= 0)
         {
-            Name = customerInfo.Name,
-            Email = customerInfo.Email,
-            PhoneNumber = customerInfo.PhoneNumber,
-            NationalRegistryId = customerInfo.NationalRegistryId,
-            Address = customerInfo.Address,
-            City = customerInfo.City,
-            PostalCode = customerInfo.PostalCode,
-        };
+            throw new ArgumentOutOfRangeException(nameof(settings.NumberOfPayments), settings.NumberOfPayments, "Teya Consumer Loans numberOfPayments must be configured.");
+        }
     }
 
-    static string ParseSupportedLanguage(string language)
+    static string CreateDescription(PaymentSettings paymentSettings)
     {
-        var parsed = CultureInfo.GetCultureInfo(language).TwoLetterISOLanguageName.ToUpperInvariant();
-        return parsed switch
+        if (!string.IsNullOrWhiteSpace(paymentSettings.OrderName))
         {
-            "IS" => "is",
-            "EN" => "en",
-            _ => "is",
-        };
+            return paymentSettings.OrderName;
+        }
+
+        var firstTitle = paymentSettings.Orders.FirstOrDefault()?.Title;
+        if (!string.IsNullOrWhiteSpace(firstTitle))
+        {
+            return firstTitle;
+        }
+
+        return !string.IsNullOrWhiteSpace(paymentSettings.OrderNumber)
+            ? paymentSettings.OrderNumber
+            : paymentSettings.OrderUniqueId.ToString();
     }
 }
