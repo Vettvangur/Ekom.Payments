@@ -43,8 +43,14 @@ class Payment : IPaymentProvider
         _config = config;
     }
 
-    private string FormatPrice(decimal price)
+    internal static string FormatPrice(decimal price, BorgunSettings borgunSettings)
     {
+        if (borgunSettings.PreserveDecimalAmounts)
+        {
+            var decimalAmount = Math.Round(price, 2, MidpointRounding.AwayFromZero);
+            return decimalAmount.ToString("0.00", CultureInfo.InvariantCulture).Replace('.', ',');
+        }
+
         var rounded = Math.Round(price, 0, MidpointRounding.AwayFromZero);
         return $"{rounded},00";
     }
@@ -98,7 +104,7 @@ class Payment : IPaymentProvider
                 { "returnurlcancel", paymentSettings.CancelUrl.ToString().AddQueryParam("paymentError","cancelPayment" ) },
                 { "returnurlerror", paymentSettings.ErrorUrl.ToString().AddQueryParam("paymentError","errorPayment" ) },
                 { "returnurlsuccessserver", reportUrl.ToString() },
-                { "amount", FormatPrice(total) },
+                { "amount", FormatPrice(total, borgunSettings) },
                 { "currency", paymentSettings.Currency },
                 { "language", paymentSettings.Language.ToUpper() == "IS-IS" ? "IS" : paymentSettings.Language.ToUpper() }
             };
@@ -109,8 +115,8 @@ class Payment : IPaymentProvider
 
                 formValues.Add("itemdescription_" + lineNumber, order.Title);
                 formValues.Add("itemcount_" + lineNumber, order.Quantity.ToString());
-                formValues.Add("itemunitamount_" + lineNumber, FormatPrice(order.Price));
-                formValues.Add("itemamount_" + lineNumber, FormatPrice(order.GrandTotal));
+                formValues.Add("itemunitamount_" + lineNumber, FormatPrice(order.Price, borgunSettings));
+                formValues.Add("itemamount_" + lineNumber, FormatPrice(order.GrandTotal, borgunSettings));
             }
 
             //if (borgunSettings.SkipReceipt)
@@ -163,7 +169,7 @@ class Payment : IPaymentProvider
                     paymentSettings.SuccessUrl.ToString(),
                     reportUrl.ToString(),
                     borgunOrderId,
-                    FormatPrice(total),
+                    FormatPrice(total, borgunSettings),
                     paymentSettings.Currency
                 ).Message
             );

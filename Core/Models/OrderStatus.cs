@@ -37,7 +37,7 @@ public class OrderStatus
     /// <summary>
     /// Total amount
     /// </summary>
-    [Column, NotNull]
+    [Column(Precision = 18, Scale = 2), NotNull]
     public decimal Amount { get; set; }
 
     /// <summary>
