@@ -81,7 +81,8 @@ public class PayTrailResponseController : ControllerBase
 
             if (callback.Status.Equals("ok", StringComparison.InvariantCultureIgnoreCase))
             {
-                var expectedAmount = Payment.ToMinorUnits(order.Amount, paymentSettings.Currency);
+                var expectedOrderAmount = GetExpectedOrderAmount(order, paymentSettings);
+                var expectedAmount = Payment.ToMinorUnits(expectedOrderAmount, paymentSettings.Currency);
                 if (callback.Amount != expectedAmount)
                 {
                     _logger.LogWarning("PayTrail Payment Response - Amount mismatch for order {OrderId}. Expected {ExpectedAmount}, got {ActualAmount}", orderId, expectedAmount, callback.Amount);
@@ -92,13 +93,11 @@ public class PayTrailResponseController : ControllerBase
                     return BadRequest();
                 }
 
-                if (!order.Paid)
+                if (await TryMarkOrderPaidAsync(order).ConfigureAwait(false))
                 {
-                    await SavePaymentDataAsync(order, callback, parameters).ConfigureAwait(false);
+                    await SavePaymentDataAsync(order, callback, parameters, expectedOrderAmount).ConfigureAwait(false);
 
                     order.Paid = true;
-                    await _orderService.UpdateAsync(order).ConfigureAwait(false);
-
                     await Events.OnSuccessAsync(this, new SuccessEventArgs
                     {
                         OrderStatus = order,
@@ -155,6 +154,27 @@ public class PayTrailResponseController : ControllerBase
         }
     }
 
+    static decimal GetExpectedOrderAmount(OrderStatus order, PaymentSettings paymentSettings)
+    {
+        var orderLines = paymentSettings.Orders?.ToList();
+
+        return orderLines is { Count: > 0 }
+            ? orderLines.Sum(x => x.GrandTotal)
+            : order.Amount;
+    }
+
+    async Task<bool> TryMarkOrderPaidAsync(OrderStatus order)
+    {
+        using var db = _dbFac.GetDatabase();
+        var updatedRows = await db.OrderStatus
+            .Where(x => x.UniqueId == order.UniqueId && !x.Paid)
+            .Set(x => x.Paid, true)
+            .UpdateAsync()
+            .ConfigureAwait(false);
+
+        return updatedRows == 1;
+    }
+
     static PayTrailCallback? CreateCallback(IReadOnlyDictionary<string, string> parameters)
     {
         if (!parameters.TryGetValue("signature", out var signature)
@@ -179,7 +199,7 @@ public class PayTrailResponseController : ControllerBase
         };
     }
 
-    async Task SavePaymentDataAsync(OrderStatus order, PayTrailCallback callback, Dictionary<string, string> parameters)
+    async Task SavePaymentDataAsync(OrderStatus order, PayTrailCallback callback, Dictionary<string, string> parameters, decimal amount)
     {
         try
         {
@@ -195,7 +215,7 @@ public class PayTrailResponseController : ControllerBase
                     Status = callback.Status,
                     Parameters = parameters,
                 }),
-                Amount = order.Amount.ToString(),
+                Amount = amount.ToString(),
             };
 
             using var db = _dbFac.GetDatabase();

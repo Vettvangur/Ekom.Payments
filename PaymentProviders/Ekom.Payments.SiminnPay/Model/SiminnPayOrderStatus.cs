@@ -23,9 +23,9 @@ namespace Ekom.Payments.SiminnPay.Model
 
         /// <summary> Hash value of OrderKey + Amount + ExipresAt </summary>
         [Required]
-        public string HMAC { get; set; }
+        public string? HMAC { get; set; } = null;
 
         /// <summary> Details of transaction ip paid </summary>
-        public TransactionDetails TransactionDetails { get; set; }
+        public TransactionDetails? TransactionDetails { get; set; } = null;
     }
 }
