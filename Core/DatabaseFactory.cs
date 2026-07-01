@@ -12,13 +12,14 @@ public interface IDatabaseFactory
 class DatabaseFactory : IDatabaseFactory
 {
     readonly string _connectionString;
+    readonly string _providerName;
 
     public DatabaseFactory(IConfiguration configuration)
     {
-        var connectionStringName = "umbracoDbDSN";
-        _connectionString = configuration.GetConnectionString(connectionStringName);
+        _connectionString = UmbracoDatabaseConfiguration.GetConnectionString(configuration);
+        _providerName = UmbracoDatabaseConfiguration.GetLinqToDbProviderName(configuration);
     }
 
-    public DbContext GetDatabase() => new DbContext(_connectionString);
+    public DbContext GetDatabase() => new DbContext(_providerName, _connectionString);
     public SqlConnection GetSqlConnection() => new SqlConnection(_connectionString);
 }
