@@ -1,25 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
-        <AssemblyName>Ekom.Payments.AspNetCore</AssemblyName>
+        <TargetFramework>net10.0</TargetFramework>
+        <AssemblyName>Ekom.Payments.U17</AssemblyName>
         <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+        <RootNamespace>Ekom.Payments.Umb</RootNamespace>
 
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
 
         <!-- Package properties -->
-        <PackageId>Ekom.Payments.AspNetCore</PackageId>
-        <Version>0.2.4</Version>
-        <Title>Ekom Payments AspNetCore</Title>
+        <PackageId>Ekom.Payments.U17</PackageId>
+        <Version>0.0.1</Version>
+        <Title>Ekom Payments Umbraco 17</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
         <PackageIcon>images\VV_Logo.png</PackageIcon>
-        <Description>Ekom Payments ASP.NET Core - Vettvangur E-Commerce solution</Description>
-        <PackageReleaseNotes></PackageReleaseNotes>
-        <Copyright>Copyright 2022</Copyright>
-        <PackageTags></PackageTags>
+        <Description>Ekom Payments - Umbraco E-Commerce solution</Description>
+        <PackageReleaseNotes>Initial Umbraco 17 support</PackageReleaseNotes>
+        <Copyright>Copyright 2026</Copyright>
+        <PackageTags>Ekom Umbraco Payments</PackageTags>
 
         <!-- Optional: Publish the repository URL in the built .nupkg (in the NuSpec <Repository> element) -->
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -46,30 +47,16 @@
 
     <ItemGroup>
         <!-- Package icon -->
-        <None Include="..\VV_Logo.png" Pack="true" PackagePath="images\" />
+        <None Include="..\..\VV_Logo.png" Pack="true" PackagePath="images\" />
     </ItemGroup>
 
     <ItemGroup>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.U9</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.U10</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.U11</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.U12</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Ekom.Payments.U17</_Parameter1>
-        </AssemblyAttribute>
+        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
+        <PackageReference Include="Umbraco.Cms.Core" Version="17.0.0" />
+        <PackageReference Include="Umbraco.Cms.Web.Common" Version="17.0.0" />
     </ItemGroup>
-
 
     <ItemGroup>
-        <ProjectReference Include="..\Core\Ekom.Payments.Core.csproj" />
+        <ProjectReference Include="..\..\AspNetCore\Ekom.Payments.AspNetCore.csproj" />
     </ItemGroup>
-
 </Project>
