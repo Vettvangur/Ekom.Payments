@@ -1,4 +1,3 @@
-using Ekom.Payments.Helpers;
 using Ekom.Payments.TeyaConsumerloans.Models;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
@@ -9,7 +8,6 @@ using Newtonsoft.Json;
 using System.Globalization;
 using System.Net.Mail;
 using System.Threading.Channels;
-using Umbraco.Cms.Core.Web;
 
 namespace Ekom.Payments.TeyaConsumerloans;
 
@@ -45,7 +43,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
     readonly PaymentsConfiguration _settings;
     readonly IMailService _mailSvc;
     readonly IHttpContextAccessor _httpContextAccessor;
-    readonly IUmbracoContextFactory _umbracoContextFactory;
+    readonly IPaymentExecutionContext _paymentExecutionContext;
     readonly TeyaConsumerloansClient _client;
 
     public TeyaConsumerloansPollingService(
@@ -56,7 +54,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
         PaymentsConfiguration settings,
         IMailService mailSvc,
         IHttpContextAccessor httpContextAccessor,
-        IUmbracoContextFactory umbracoContextFactory)
+        IPaymentExecutionContext paymentExecutionContext)
     {
         _logger = logger;
         _dbFac = dbFac;
@@ -64,7 +62,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
         _settings = settings;
         _mailSvc = mailSvc;
         _httpContextAccessor = httpContextAccessor;
-        _umbracoContextFactory = umbracoContextFactory;
+        _paymentExecutionContext = paymentExecutionContext;
         _client = new TeyaConsumerloansClient(httpClientFactory, _logger);
     }
 
@@ -179,7 +177,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
             order.Paid = true;
             await _orderService.UpdateAsync(order).ConfigureAwait(false);
 
-            using (var umbracoContextReference = _umbracoContextFactory.EnsureUmbracoContext())
+            using (_paymentExecutionContext.EnsureContext())
             {
                 await Events.OnSuccessAsync(this, new SuccessEventArgs
                 {
@@ -193,7 +191,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
         {
             _logger.LogError(ex, "Teya Consumer Loans Response - Failed. OrderId: {OrderId}", order.UniqueId);
 
-            using var umbracoContextReference = _umbracoContextFactory.EnsureUmbracoContext();
+            using var paymentContext = _paymentExecutionContext.EnsureContext();
 
             await Events.OnErrorAsync(this, new ErrorEventArgs
             {
