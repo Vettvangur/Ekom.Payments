@@ -27,6 +27,25 @@ static class OptionalPaymentProviderRegistration
         try
         {
             assembly = Assembly.Load(assemblyName);
+
+            var extensionType = assembly.GetType(extensionTypeName, throwOnError: false);
+            var method = extensionType?.GetMethod(
+                methodName,
+                BindingFlags.Public | BindingFlags.Static,
+                binder: null,
+                types: new[] { typeof(IServiceCollection) },
+                modifiers: null);
+
+            if (method == null)
+            {
+                return;
+            }
+
+            method.Invoke(null, new object[] { services });
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException != null)
+        {
+            throw new InvalidOperationException($"Failed to register optional payment provider '{assemblyName}'.", ex.InnerException);
         }
         catch (FileNotFoundException)
         {
@@ -40,27 +59,17 @@ static class OptionalPaymentProviderRegistration
         {
             return;
         }
-
-        var extensionType = assembly.GetType(extensionTypeName, throwOnError: false);
-        var method = extensionType?.GetMethod(
-            methodName,
-            BindingFlags.Public | BindingFlags.Static,
-            binder: null,
-            types: new[] { typeof(IServiceCollection) },
-            modifiers: null);
-
-        if (method == null)
+        catch (ArgumentNullException)
         {
             return;
         }
-
-        try
+        catch (ArgumentException)
         {
-            method.Invoke(null, new object[] { services });
+            return;
         }
-        catch (TargetInvocationException ex) when (ex.InnerException != null)
+        catch (Exception)
         {
-            throw new InvalidOperationException($"Failed to register optional payment provider '{assemblyName}'.", ex.InnerException);
+            return;
         }
     }
 }
