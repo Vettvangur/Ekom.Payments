@@ -14,6 +14,8 @@ static class ApplicationBuilderExtensions
         services.AddAspNetCoreEkomPayments(configuration);
 
         services.AddTransient<IUmbracoService, UmbracoService>();
+        services.AddSingleton<IPaymentExecutionContext, UmbracoPaymentExecutionContext>();
+        services.AddOptionalPaymentProviderServices();
 
         return services;
     }
