@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
@@ -14,10 +15,10 @@ class DatabaseFactory : IDatabaseFactory
     readonly string _connectionString;
     readonly string _providerName;
 
-    public DatabaseFactory(IConfiguration configuration)
+    public DatabaseFactory(IConfiguration configuration, IWebHostEnvironment webHostEnvironment)
     {
-        _connectionString = UmbracoDatabaseConfiguration.GetConnectionString(configuration);
         _providerName = UmbracoDatabaseConfiguration.GetLinqToDbProviderName(configuration);
+        _connectionString = UmbracoDatabaseConfiguration.GetConnectionString(configuration, webHostEnvironment.ContentRootPath) ?? string.Empty;
     }
 
     public DbContext GetDatabase() => new DbContext(_providerName, _connectionString);

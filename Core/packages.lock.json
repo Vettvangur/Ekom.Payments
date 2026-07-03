@@ -24,16 +24,6 @@
           "Microsoft.Identity.Client.Extensions.Msal": "4.78.0"
         }
       },
-      "Ekom.Common": {
-        "type": "Direct",
-        "requested": "[0.2.30, )",
-        "resolved": "0.2.30",
-        "contentHash": "ItMx07foRMguAduotMlw0OoU8dA/4NZ3hvFI2jozwy6FrtbSO/osQAYUstR3DUV2A2r4Rj/60yWAAvYl8KnvuA==",
-        "dependencies": {
-          "Microsoft.Extensions.Caching.Memory": "8.0.1",
-          "Newtonsoft.Json": "13.0.3"
-        }
-      },
       "linq2db": {
         "type": "Direct",
         "requested": "[5.4.1, )",
@@ -78,6 +68,12 @@
           "Microsoft.Build.Tasks.Git": "1.0.0",
           "Microsoft.SourceLink.Common": "1.0.0"
         }
+      },
+      "Newtonsoft.Json": {
+        "type": "Direct",
+        "requested": "[13.0.3, )",
+        "resolved": "13.0.3",
+        "contentHash": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ=="
       },
       "Microsoft.Bcl.AsyncInterfaces": {
         "type": "Transitive",
@@ -266,11 +262,6 @@
         "type": "Transitive",
         "resolved": "1.0.0",
         "contentHash": "N4KeF3cpcm1PUHym1RmakkzfkEv3GRMyofVv40uXsQhCQeglr2OHNcUk2WOG51AKpGO8ynGpo9M/kFXSzghwug=="
-      },
-      "Newtonsoft.Json": {
-        "type": "Transitive",
-        "resolved": "13.0.3",
-        "contentHash": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ=="
       },
       "SQLitePCLRaw.bundle_e_sqlite3": {
         "type": "Transitive",

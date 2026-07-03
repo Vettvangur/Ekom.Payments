@@ -17,18 +17,18 @@ public static class PaymentsUriHelper
     /// <returns></returns>
     public static Uri EnsureFullUri(string uri, HttpRequest Request)
     {
-        if (Uri.IsWellFormedUriString(uri, UriKind.Absolute))
+        if (Uri.TryCreate(uri, UriKind.Absolute, out var absoluteUri) && absoluteUri.IsWellFormedOriginalString())
         {
-            return new Uri(uri);
+            return absoluteUri;
         }
-        else if (Uri.IsWellFormedUriString(uri, UriKind.Relative))
+        else if (Uri.TryCreate(uri, UriKind.Relative, out var relativeUri) && relativeUri.IsWellFormedOriginalString())
         {
             var basePath = $"{Request.Scheme}://{Request.Host}";
 
-            return new Uri(basePath + uri);
+            return CreateUri(basePath + relativeUri, uri, Request, "relative");
         }
 
-        throw new ArgumentException($"Uri \"{uri}\" is not a well formed Uri, please ensure correct configuration of urls used for success/error/cancel...", nameof(uri));
+        throw CreateInvalidUriException(uri, Request, "absolute or relative");
     }
     /// <summary>
     /// Ensures param is full URI, otherwise adds components using data from Request
@@ -46,11 +46,37 @@ public static class PaymentsUriHelper
         {
             var basePath = $"{Request.Scheme}://{Request.Host}";
 
-            return new Uri(basePath + uri);
+            return CreateUri(basePath + uri, uri.ToString(), Request, "relative");
         }
 
-        throw new ArgumentException($"Uri \"{uri}\" is not a well formed Uri, please ensure correct configuration of urls used for success/error/cancel...", nameof(uri));
+        throw CreateInvalidUriException(uri.ToString(), Request, uri.IsAbsoluteUri ? "absolute" : "relative");
     }
+
+    static Uri CreateUri(string uri, string configuredUri, HttpRequest request, string uriKind)
+    {
+        try
+        {
+            return new Uri(uri, UriKind.Absolute);
+        }
+        catch (UriFormatException ex)
+        {
+            throw CreateInvalidUriException(configuredUri, request, uriKind, uri, ex);
+        }
+    }
+
+    static ArgumentException CreateInvalidUriException(
+        string uri,
+        HttpRequest request,
+        string uriKind,
+        string? resolvedUri = null,
+        Exception? innerException = null)
+        => new ArgumentException(
+            $"Uri \"{uri}\" is not a well formed {uriKind} Uri. " +
+            $"Request scheme: \"{request.Scheme}\". Request host: \"{request.Host}\". " +
+            (resolvedUri == null ? string.Empty : $"Resolved Uri: \"{resolvedUri}\". ") +
+            "Please ensure correct configuration of urls used for success/error/cancel...",
+            nameof(uri),
+            innerException);
 
     public static Uri AddQueryString(Uri? uri, string? queryString = "")
     {
