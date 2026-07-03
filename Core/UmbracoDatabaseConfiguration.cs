@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 
 namespace Ekom.Payments;
@@ -5,9 +6,21 @@ namespace Ekom.Payments;
 internal static class UmbracoDatabaseConfiguration
 {
     public const string ConnectionStringName = "umbracoDbDSN";
+    const string DataDirectoryToken = "|DataDirectory|";
 
     public static string? GetConnectionString(IConfiguration configuration)
         => configuration.GetConnectionString(ConnectionStringName);
+
+    public static string? GetConnectionString(IConfiguration configuration, string contentRootPath)
+    {
+        var connectionString = GetConnectionString(configuration);
+
+        return GetDatabaseProvider(configuration) switch
+        {
+            UmbracoDatabaseProvider.Sqlite => ResolveSqliteConnectionString(connectionString, contentRootPath),
+            _ => connectionString
+        };
+    }
 
     public static UmbracoDatabaseProvider GetDatabaseProvider(IConfiguration configuration)
     {
@@ -85,6 +98,30 @@ internal static class UmbracoDatabaseConfiguration
             || dataSource?.EndsWith(".db", StringComparison.OrdinalIgnoreCase) == true
             || dataSource?.EndsWith(".sqlite", StringComparison.OrdinalIgnoreCase) == true
             || dataSource?.EndsWith(".sqlite3", StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    static string? ResolveSqliteConnectionString(string? connectionString, string contentRootPath)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return connectionString;
+        }
+
+        var builder = new SqliteConnectionStringBuilder(connectionString);
+        var dataSource = builder.DataSource;
+
+        if (!dataSource.StartsWith(DataDirectoryToken, StringComparison.OrdinalIgnoreCase))
+        {
+            return connectionString;
+        }
+
+        var relativePath = dataSource[DataDirectoryToken.Length..]
+            .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var dataDirectory = Path.Combine(contentRootPath, "umbraco", "Data");
+
+        builder.DataSource = Path.GetFullPath(Path.Combine(dataDirectory, relativePath));
+
+        return builder.ConnectionString;
     }
 }
 
