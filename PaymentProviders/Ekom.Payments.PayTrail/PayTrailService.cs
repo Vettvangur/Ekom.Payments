@@ -28,6 +28,11 @@ public class PayTrailService
         var headers = PayTrailHmacHelper.CreateHeaders(settings, HttpMethod.Post.Method);
         headers["signature"] = PayTrailHmacHelper.CalculateHmac(settings.SecretKey, headers, body, settings.Algorithm);
 
+        if (settings.DebugLog)
+        {
+            _logger.LogInformation("PayTrail create payment request payload: {RequestBody}", body);
+        }
+
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, new Uri(settings.ApiBaseUrl, "/payments"))
         {
             Content = new StringContent(body, Encoding.UTF8, "application/json"),
@@ -41,6 +46,11 @@ public class PayTrailService
         var httpClient = _httpClientFactory.CreateClient();
         using var response = await httpClient.SendAsync(httpRequest).ConfigureAwait(false);
         var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+        if (settings.DebugLog)
+        {
+            _logger.LogInformation("PayTrail create payment response payload. Status: {StatusCode} Body: {ResponseBody}", response.StatusCode, responseBody);
+        }
 
         if (!response.IsSuccessStatusCode)
         {
