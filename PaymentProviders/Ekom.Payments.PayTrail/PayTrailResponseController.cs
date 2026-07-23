@@ -44,7 +44,6 @@ public class PayTrailResponseController : ControllerBase
         var isCallback = parameters.ContainsKey("callback");
 
         _logger.LogInformation("PayTrail Payment Response - Start");
-        _logger.LogDebug(JsonConvert.SerializeObject(parameters));
 
         try
         {
@@ -67,6 +66,12 @@ public class PayTrailResponseController : ControllerBase
             if (paymentSettings == null || payTrailSettings == null)
             {
                 return BadRequest();
+            }
+
+            if (payTrailSettings.DebugLog)
+            {
+                var logParameters = parameters.ToDictionary(x => x.Key, x => x.Key.Equals("signature", StringComparison.InvariantCultureIgnoreCase) ? "[redacted]" : x.Value);
+                _logger.LogInformation("PayTrail payment response payload: {ResponsePayload}", JsonConvert.SerializeObject(logParameters));
             }
 
             if (!PayTrailHmacHelper.IsValidSignature(payTrailSettings.SecretKey, parameters, callback.Signature))

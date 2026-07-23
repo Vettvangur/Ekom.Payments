@@ -41,6 +41,7 @@ Configure these values on the PayTrail payment provider node or set them in code
 | `ApiBaseUrl` | Yes | `https://services.paytrail.com` | PayTrail API base URL. |
 | `Algorithm` | Yes | `sha256` | HMAC algorithm. PayTrail supports `sha256` and `sha512`. |
 | `PlatformName` | No | `ekom-vettvangur` | Sent as PayTrail `platform-name` header. |
+| `DebugLog` | No | `false` | Logs full PayTrail create-payment request and response payloads, plus callback payloads with the signature redacted, at Information level. Payloads can contain customer data and must only be enabled for troubleshooting. |
 
 PayTrail test credentials from their documentation:
 
@@ -62,7 +63,8 @@ PayTrail settings can also be configured under `Ekom` -> `Payments` -> `payTrail
         "secretKey": "SAIPPUAKAUPPIAS",
         "apiBaseUrl": "https://services.paytrail.com",
         "algorithm": "sha256",
-        "platformName": "ekom-vettvangur"
+        "platformName": "ekom-vettvangur",
+        "debugLog": false
       }
     }
   }
@@ -81,6 +83,7 @@ paymentSettings.SetPayTrailSettings(new PayTrailSettings
     ApiBaseUrl = new Uri("https://services.paytrail.com"),
     Algorithm = "sha256",
     PlatformName = "ekom-vettvangur",
+    DebugLog = false,
 });
 ```
 
@@ -120,7 +123,7 @@ The provider converts Ekom decimal amounts as follows:
 - Most currencies: multiplied by `100`.
 - Zero-decimal currencies (`ISK`, `JPY`, `KRW`): no multiplier.
 
-Line items are sent with `vatPercentage = 0` because Ekom `OrderItem` does not currently expose VAT percentage data.
+For each line item, `vatPercentage` is derived from the included VAT amount as `VAT / (GrandTotal - VAT) * 100` and rounded to one decimal place. `OrderItem.VAT` must therefore contain the VAT amount included in that line's `GrandTotal`. A non-positive VAT amount or net amount results in `vatPercentage = 0`.
 
 ## Language mapping
 

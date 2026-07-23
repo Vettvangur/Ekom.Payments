@@ -14,4 +14,9 @@ public class PayTrailSettings : PaymentSettingsBase<PayTrailSettings>
     public string Algorithm { get; set; } = null!;
 
     public string PlatformName { get; set; } = null!;
+
+    /// <summary>
+    /// Enables information-level logging of PayTrail request, response, and callback payloads.
+    /// </summary>
+    public bool DebugLog { get; set; }
 }
