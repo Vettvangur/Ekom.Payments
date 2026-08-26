@@ -18,32 +18,23 @@ public class Payment : IPaymentProvider
     const string reportPath = "/ekom/payments/siminnpayresponse";
 
     readonly ILogger<Payment> _logger;
-    readonly PaymentsConfiguration _settings;
     readonly IUmbracoService _uService;
     readonly IOrderService _orderService;
     readonly HttpContext _httpCtx;
-    readonly IHttpClientFactory _httpClientFactory;
-    readonly IDatabaseFactory _dbFac;
 
     /// <summary>
     /// ctor for Unit Tests
     /// </summary>
     public Payment(
         ILogger<Payment> logger,
-        PaymentsConfiguration settings,
         IUmbracoService uService,
         IOrderService orderService,
-        IHttpContextAccessor httpContext,
-        IHttpClientFactory httpClientFactory,
-        IDatabaseFactory dbFac)
+        IHttpContextAccessor httpContext)
     {
         _logger = logger;
-        _settings = settings;
         _uService = uService;
         _orderService = orderService;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
-        _httpClientFactory = httpClientFactory;
-        _dbFac = dbFac;
     }
 
     /// <summary>
@@ -85,11 +76,8 @@ public class Payment : IPaymentProvider
             paymentSettings.ReportUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.ReportUrl ?? new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
 
-            var svc = new SiminnPayService(siminnPaySettings!.ApiKey, siminnPaySettings.ApiUrl, _logger);
-            var order = await svc.CreatePaymentOrder(payOrder,
-                                                     paymentSettings.ReportUrl.ToString(),
-                                                     siminnPaySettings.Currency,
-                                                     siminnPaySettings.RestrictToLoan).ConfigureAwait(false);
+            var svc = new SiminnPayService(siminnPaySettings!, _logger);
+            var order = await svc.CreatePaymentOrder(payOrder, paymentSettings.ReportUrl).ConfigureAwait(false);
 
             _logger.LogInformation("Síminn Pay Payment Request - Created payment order with order key: {OrderKey}", order.OrderKey);
 

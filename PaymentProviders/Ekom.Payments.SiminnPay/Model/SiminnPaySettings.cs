@@ -10,6 +10,8 @@ public class SiminnPaySettings : PaymentSettingsBase<SiminnPaySettings>
     public string? PaymentFormUrl { get; set; }
     public string? CustomerInformationSharedSecret { get; set; }
     public bool RestrictToLoan { get; set; }
+    public string PaymentType { get; set; } = "card";
+    public int TimeToLive { get; set; } = 60;
     public string ReferenceId { get; set; }
     public string Currency { get; set; } = "ISK";
     public string Secret { get; set; }
