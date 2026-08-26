@@ -80,17 +80,15 @@ public class SiminnPayResponseController : ControllerBase
             var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
             var siminnPaySettings = JsonConvert.DeserializeObject<SiminnPaySettings>(order.EkomPaymentProviderData);
 
-            string body = notificationCallBack.OrderKey.ToString() +
-                    ((int)notificationCallBack.Amount) +
-                    notificationCallBack.ExpiresAt.ToString("dd.MM.yyyy HH:mm:ss");
-
-            var signature = CryptoHelpers.GetHMACSHA256(siminnPaySettings.Secret, body);
-
-            if (!notificationCallBack.HMAC.Equals(signature, StringComparison.InvariantCultureIgnoreCase))
+            if (siminnPaySettings == null || string.IsNullOrWhiteSpace(siminnPaySettings.Secret))
             {
-                _logger.LogDebug("HMAC body: {Body}", body);
+                _logger.LogWarning("SiminnPay Response - Missing shared secret for order {OrderKey}", notificationCallBack.OrderKey);
+                return Unauthorized();
+            }
+
+            if (!IsValidSignature(notificationCallBack, siminnPaySettings.Secret))
+            {
                 _logger.LogDebug("Posted HMAC: {HMAC}", notificationCallBack.HMAC);
-                _logger.LogDebug("Generated HMAC: {Signature}", signature);
 
                 _logger.LogWarning("Signature mismatch, unauthorized order update request");
 
@@ -99,6 +97,21 @@ public class SiminnPayResponseController : ControllerBase
                     OrderStatus = order,
                 });
                 return Unauthorized();
+            }
+
+            if (notificationCallBack.Amount != order.Amount)
+            {
+                _logger.LogWarning(
+                    "SiminnPay Response - Amount mismatch for order {OrderKey}. Expected {ExpectedAmount}, received {ReceivedAmount}",
+                    notificationCallBack.OrderKey,
+                    order.Amount,
+                    notificationCallBack.Amount);
+
+                await Model.Events.OnErrorAsync(this, new ErrorEventArgs
+                {
+                    OrderStatus = order,
+                });
+                return BadRequest();
             }
 
             _logger.LogInformation("SiminnPay Response Hit - Signature verified successfully - notificationCallBack.Status: " + notificationCallBack.Status);
@@ -200,7 +213,7 @@ public class SiminnPayResponseController : ControllerBase
             siminnPaySettings,
             SiminnPaySettings.Properties);
 
-        var svc = new SiminnPayService(siminnPaySettings.ApiKey, siminnPaySettings.ApiUrl, _logger);
+        var svc = new SiminnPayService(siminnPaySettings!, _logger);
         var initialStatus = await svc.GetStatus(siminnPayOrderKey);
 
         _logger.LogDebug("SiminnPay Status Requested - Status: {Status}", initialStatus.Status);
@@ -212,5 +225,46 @@ public class SiminnPayResponseController : ControllerBase
         }
 
         return new JsonResult(new SiminnPayStatusView(order, initialStatus));
+    }
+
+    private static bool IsValidSignature(SiminnPayOrderStatus notificationCallBack, string secret)
+    {
+        if (string.IsNullOrWhiteSpace(notificationCallBack.HMAC))
+        {
+            return false;
+        }
+
+        return GetSignatureBodies(notificationCallBack)
+            .Select(body => CryptoHelpers.GetHMACSHA256(secret, body))
+            .Any(signature => notificationCallBack.HMAC.Equals(signature, StringComparison.InvariantCultureIgnoreCase));
+    }
+
+    private static IEnumerable<string> GetSignatureBodies(SiminnPayOrderStatus notificationCallBack)
+    {
+        var amountValues = new HashSet<string>
+        {
+            notificationCallBack.Amount.ToString("0.#############################", CultureInfo.InvariantCulture),
+        };
+
+        if (decimal.Truncate(notificationCallBack.Amount) == notificationCallBack.Amount)
+        {
+            amountValues.Add(((long)notificationCallBack.Amount).ToString(CultureInfo.InvariantCulture));
+        }
+
+        var expiresAtValues = new HashSet<string>
+        {
+            notificationCallBack.ExpiresAt.ToString("O", CultureInfo.InvariantCulture),
+            notificationCallBack.ExpiresAt.ToString("s", CultureInfo.InvariantCulture),
+            notificationCallBack.ExpiresAt.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture),
+            notificationCallBack.ExpiresAt.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
+        };
+
+        foreach (var amount in amountValues)
+        {
+            foreach (var expiresAt in expiresAtValues)
+            {
+                yield return notificationCallBack.OrderKey + amount + expiresAt;
+            }
+        }
     }
 }
