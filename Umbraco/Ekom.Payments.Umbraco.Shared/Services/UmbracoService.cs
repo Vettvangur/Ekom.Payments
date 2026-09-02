@@ -101,7 +101,7 @@ class UmbracoService : IUmbracoService
 
         if (ppContainer == null) throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider container node: " + ppNodeName);
 
-        var visibleChildren = ppContainer.Children.Where(x => x.IsVisible());
+        var visibleChildren = ppContainer.Children().Where(x => x.IsVisible());
 
         return visibleChildren.FirstOrDefault(x =>
                    x.Name.Equals(ppNodeName, StringComparison.InvariantCultureIgnoreCase))
