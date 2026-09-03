@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Ekom.Payments.Straumur;
 
 /// <summary>
@@ -24,6 +26,12 @@ public class PaymentRequest
     /// The reference to uniquely identify a payment.
     /// </summary>
     public string Reference { get; set; }
+
+    /// <summary>
+    /// The number of hours to wait before capturing the payment.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int CaptureHoursDelay { get; set; } = 0;
 
     /// <summary>
     /// The terminal identifier to uniquely identify the terminal.

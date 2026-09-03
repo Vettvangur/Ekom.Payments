@@ -22,6 +22,10 @@ public class StraumurSettings : PaymentSettingsBase<StraumurSettings>
     /// Select the recurring processing model to be used if recurring payments are needed. See https://skjolun.straumur.is/hosted-checkout/optional-parameters/recurring-processing-model
     /// </summary>
     public RecurringProccessingModel? RecurringProcessingModel { get; set; }
+
+    public bool UseDelayedCapture { get; set; }
+
+    public DateTime? DelayedCaptureDateTime { get; set; }
 }
 
 

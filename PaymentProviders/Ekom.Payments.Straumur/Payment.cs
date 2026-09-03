@@ -165,6 +165,16 @@ public class Payment : IPaymentProvider
                 };
             }
 
+            if (straumurSettings.UseDelayedCapture && straumurSettings.DelayedCaptureDateTime.HasValue)
+            {
+                var hoursUntilCapture = (int)(straumurSettings.DelayedCaptureDateTime.Value - DateTime.Now).TotalHours;
+
+                if (hoursUntilCapture > 0)
+                {
+                    request.CaptureHoursDelay = hoursUntilCapture;
+                }
+            }
+
             _logger.LogInformation($"Straumur Payment Request - Amount: {total} OrderId: {orderStatus.UniqueId}");
 
             var httpClient = _httpClientFactory.CreateClient();
