@@ -1,10 +1,9 @@
 using Ekom.Payments.Helpers;
 using Ekom.Payments.SiminnPay.Model;
 using LinqToDB;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using System.Globalization;
 using System.Net.Mail;
 
@@ -23,8 +22,8 @@ public class SiminnPayResponseController : ControllerBase
     readonly IOrderService _orderService;
     readonly IDatabaseFactory _dbFac;
     readonly IMailService _mailSvc;
-    readonly HttpContext _httpCtx;
     readonly IUmbracoService _uService;
+    readonly IConfiguration _configuration;
 
     /// <summary>
     /// ctor
@@ -35,16 +34,16 @@ public class SiminnPayResponseController : ControllerBase
         IOrderService orderService,
         IDatabaseFactory dbFac,
         IMailService mailSvc,
-        IHttpContextAccessor httpContext,
-        IUmbracoService uService)
+        IUmbracoService uService,
+        IConfiguration configuration)
     {
         _logger = logger;
         _settings = settings;
         _orderService = orderService;
         _dbFac = dbFac;
         _mailSvc = mailSvc;
-        _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
         _uService = uService;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -65,7 +64,7 @@ public class SiminnPayResponseController : ControllerBase
 
         try
         {
-            OrderStatus? order = await _orderService.GetAsync(notificationCallBack.OrderKey);
+            OrderStatus? order = await _orderService.GetByCustomAsync(notificationCallBack.OrderKey.ToString());
             if (order == null)
             {
                 _logger.LogWarning("SiminnPay Response - Unable to find order {OrderKey}", notificationCallBack.OrderKey);
@@ -77,10 +76,18 @@ public class SiminnPayResponseController : ControllerBase
                 return Ok();
             }
 
-            var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
-            var siminnPaySettings = JsonConvert.DeserializeObject<SiminnPaySettings>(order.EkomPaymentProviderData);
+            var paymentSettings = order.EkomPaymentSettings;
+            var siminnPaySettings = paymentSettings.CustomSettings.ContainsKey(typeof(SiminnPaySettings))
+                    ? paymentSettings.CustomSettings[typeof(SiminnPaySettings)] as SiminnPaySettings
+                    : new SiminnPaySettings();
 
-            if (siminnPaySettings == null || string.IsNullOrWhiteSpace(siminnPaySettings.Secret))
+            _uService.PopulatePaymentProviderProperties(
+                paymentSettings,
+                Payment._ppNodeName,
+                siminnPaySettings,
+                SiminnPaySettings.Properties);
+
+            if (string.IsNullOrWhiteSpace(siminnPaySettings?.Secret))
             {
                 _logger.LogWarning("SiminnPay Response - Missing shared secret for order {OrderKey}", notificationCallBack.OrderKey);
                 return Unauthorized();
@@ -120,6 +127,7 @@ public class SiminnPayResponseController : ControllerBase
             {
                 try
                 {
+
                     var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
                     var paymentData = new PaymentData
                     {
@@ -137,6 +145,18 @@ public class SiminnPayResponseController : ControllerBase
                     _logger.LogError(ex, "SiminnPay Response - Error saving payment data");
                 }
 
+                if (Guid.TryParse(order.CustomData, out var orderKey))
+                {
+                    var svc = new SiminnPayService(siminnPaySettings, _logger);
+                    var confirmation = await svc.GetStatus(orderKey);
+                    if (confirmation?.Status != notificationCallBack.Status)
+                    {
+                        await Model.Events.OnErrorAsync(this, new ErrorEventArgs
+                        {
+                            OrderStatus = order,
+                        });
+                    }
+                }
 
                 if (notificationCallBack.Status == SiminnPayStatus.PaymentSuccessful)
                 {
@@ -234,37 +254,12 @@ public class SiminnPayResponseController : ControllerBase
             return false;
         }
 
-        return GetSignatureBodies(notificationCallBack)
-            .Select(body => CryptoHelpers.GetHMACSHA256(secret, body))
-            .Any(signature => notificationCallBack.HMAC.Equals(signature, StringComparison.InvariantCultureIgnoreCase));
-    }
+        string body = notificationCallBack.OrderKey.ToString() +
+                    (int)notificationCallBack.Amount +
+                    notificationCallBack.ExpiresAt.ToString("dd.MM.yyyy HH:mm:ss");
 
-    private static IEnumerable<string> GetSignatureBodies(SiminnPayOrderStatus notificationCallBack)
-    {
-        var amountValues = new HashSet<string>
-        {
-            notificationCallBack.Amount.ToString("0.#############################", CultureInfo.InvariantCulture),
-        };
+        var signature = CryptoHelpers.GetHMACSHA256(secret, body);
 
-        if (decimal.Truncate(notificationCallBack.Amount) == notificationCallBack.Amount)
-        {
-            amountValues.Add(((long)notificationCallBack.Amount).ToString(CultureInfo.InvariantCulture));
-        }
-
-        var expiresAtValues = new HashSet<string>
-        {
-            notificationCallBack.ExpiresAt.ToString("O", CultureInfo.InvariantCulture),
-            notificationCallBack.ExpiresAt.ToString("s", CultureInfo.InvariantCulture),
-            notificationCallBack.ExpiresAt.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture),
-            notificationCallBack.ExpiresAt.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
-        };
-
-        foreach (var amount in amountValues)
-        {
-            foreach (var expiresAt in expiresAtValues)
-            {
-                yield return notificationCallBack.OrderKey + amount + expiresAt;
-            }
-        }
+        return notificationCallBack.HMAC.Equals(signature, StringComparison.InvariantCultureIgnoreCase);
     }
 }

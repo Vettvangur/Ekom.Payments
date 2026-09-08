@@ -25,6 +25,9 @@ namespace Ekom.Payments.SiminnPay.Model
         [Required]
         public string? HMAC { get; set; } = null;
 
+        [Required]
+        public Guid ReferenceId { get; set; }
+
         /// <summary> Details of transaction ip paid </summary>
         public TransactionDetails? TransactionDetails { get; set; } = null;
     }
