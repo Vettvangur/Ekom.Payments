@@ -92,7 +92,7 @@ public class Payment : IPaymentProvider
             }
 
             var expiresAt = straumurSettings.CheckoutExpiresInMinutes is int checkoutExpiresInMinutes
-                ? DateTime.UtcNow.AddMinutes(checkoutExpiresInMinutes)
+                ? TruncateToMilliseconds(DateTime.UtcNow.AddMinutes(checkoutExpiresInMinutes))
                 : (DateTime?)null;
 
             // Persist in database and retrieve unique order id
@@ -199,6 +199,14 @@ public class Payment : IPaymentProvider
             var responseMessage = await httpClient.PostAsJsonAsync(straumurSettings.PaymentPageUrl, request);
 
             var responseContent = await responseMessage.Content.ReadAsStringAsync();
+
+            if (!responseMessage.IsSuccessStatusCode)
+            {
+                _logger.LogError(
+                    "Straumur Payment Request returned {StatusCode}. Response: {ResponseBody}",
+                    (int)responseMessage.StatusCode,
+                    responseContent);
+            }
             
             responseMessage.EnsureSuccessStatusCode();
             
@@ -234,4 +242,7 @@ public class Payment : IPaymentProvider
                 return "is";
         }
     }
+
+    private static DateTime TruncateToMilliseconds(DateTime value)
+        => value.AddTicks(-(value.Ticks % TimeSpan.TicksPerMillisecond));
 }
