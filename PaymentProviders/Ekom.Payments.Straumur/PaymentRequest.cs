@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Ekom.Payments.Straumur;
 
 /// <summary>
@@ -35,6 +37,12 @@ public class PaymentRequest
     public string Culture { get; set; }
 
     public string RecurringProcessingModel { get; set; }
+
+    /// <summary>
+    /// The UTC date and time after which the hosted checkout can no longer be completed.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTime? ExpiresAt { get; set; }
 
     public List<Item> Items { get; set; }
 }

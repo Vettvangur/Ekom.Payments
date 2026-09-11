@@ -19,6 +19,11 @@ public class StraumurSettings : PaymentSettingsBase<StraumurSettings>
     public string AddOrderToReference { get; set; }
 
     /// <summary>
+    /// Optional number of minutes a hosted checkout remains available after its payment request is created.
+    /// </summary>
+    public int? CheckoutExpiresInMinutes { get; set; }
+
+    /// <summary>
     /// Select the recurring processing model to be used if recurring payments are needed. See https://skjolun.straumur.is/hosted-checkout/optional-parameters/recurring-processing-model
     /// </summary>
     public RecurringProccessingModel? RecurringProcessingModel { get; set; }

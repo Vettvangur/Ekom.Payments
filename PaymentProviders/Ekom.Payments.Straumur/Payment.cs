@@ -80,6 +80,16 @@ public class Payment : IPaymentProvider
             {
                 throw new ArgumentNullException(nameof(straumurSettings.TerminalIdenitifer));
             }
+            if (straumurSettings.CheckoutExpiresInMinutes is <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(straumurSettings.CheckoutExpiresInMinutes),
+                    "Checkout expiry must be greater than zero minutes.");
+            }
+
+            var expiresAt = straumurSettings.CheckoutExpiresInMinutes is int checkoutExpiresInMinutes
+                ? DateTime.UtcNow.AddMinutes(checkoutExpiresInMinutes)
+                : (DateTime?)null;
 
             // Persist in database and retrieve unique order id
             var orderStatus = await _orderService.InsertAsync(
@@ -129,6 +139,7 @@ public class Payment : IPaymentProvider
                 Amount = (int)total * 100, // Price is in ISK, Straumur requires two decimal places
                 ReturnUrl = paymentSettings.SuccessUrl.ToString(),
                 Culture = ParseSupportedLanguages(paymentSettings.Language),
+                ExpiresAt = expiresAt,
                 Items = items
             };
 
@@ -142,6 +153,7 @@ public class Payment : IPaymentProvider
                     Amount = 0,
                     ReturnUrl = paymentSettings.SuccessUrl.ToString(),
                     Culture = ParseSupportedLanguages(paymentSettings.Language),
+                    ExpiresAt = expiresAt,
                     Items = items,
                     RecurringProcessingModel = RecurringProccessingModel.CardOnFile.ToString()
                 };
@@ -156,6 +168,7 @@ public class Payment : IPaymentProvider
                     Amount = (int)total * 100,
                     ReturnUrl = paymentSettings.SuccessUrl.ToString(),
                     Culture = ParseSupportedLanguages(paymentSettings.Language),
+                    ExpiresAt = expiresAt,
                     Items = items,
                     RecurringProcessingModel = RecurringProccessingModel.Subscription.ToString()
                 };
