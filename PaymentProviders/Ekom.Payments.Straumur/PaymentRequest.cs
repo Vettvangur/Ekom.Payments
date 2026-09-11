@@ -42,6 +42,7 @@ public class PaymentRequest
 
     public string Culture { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string RecurringProcessingModel { get; set; }
 
     /// <summary>
