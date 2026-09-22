@@ -1,8 +1,19 @@
+using Newtonsoft.Json;
+
 namespace Ekom.Payments.Straumur;
 
 public class StraumurSettings : PaymentSettingsBase<StraumurSettings>
 {
-    public string TerminalIdenitifer { get; set; }
+    [JsonProperty("TerminalIdenitifer")]
+    public string TerminalIdentifier { get; set; }
+
+    [Obsolete("Use TerminalIdentifier instead.")]
+    [JsonIgnore]
+    public string TerminalIdenitifer
+    {
+        get => TerminalIdentifier;
+        set => TerminalIdentifier = value;
+    }
 
     public string ApiKey { get; set; }
 
