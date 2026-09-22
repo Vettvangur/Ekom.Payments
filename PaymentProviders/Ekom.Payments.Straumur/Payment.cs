@@ -80,9 +80,9 @@ public class Payment : IPaymentProvider
 
             ArgumentNullException.ThrowIfNull(straumurSettings.PaymentPageUrl);
             
-            if (string.IsNullOrEmpty(straumurSettings.TerminalIdenitifer))
+            if (string.IsNullOrEmpty(straumurSettings.TerminalIdentifier))
             {
-                throw new ArgumentNullException(nameof(straumurSettings.TerminalIdenitifer));
+                throw new ArgumentNullException(nameof(straumurSettings.TerminalIdentifier));
             }
             if (straumurSettings.CheckoutExpiresInMinutes is <= 0)
             {
@@ -137,7 +137,7 @@ public class Payment : IPaymentProvider
 
             var request = new PaymentRequest
             {
-                TerminalIdentifier = straumurSettings.TerminalIdenitifer,
+                TerminalIdentifier = straumurSettings.TerminalIdentifier,
                 Reference = reference,
                 Currency = paymentSettings.Currency,
                 Amount = (int)total * 100, // Price is in ISK, Straumur requires two decimal places
@@ -151,7 +151,7 @@ public class Payment : IPaymentProvider
             {
                 request = new PaymentRequest()
                 {
-                    TerminalIdentifier = straumurSettings.TerminalIdenitifer,
+                    TerminalIdentifier = straumurSettings.TerminalIdentifier,
                     Reference = reference,
                     Currency = paymentSettings.Currency,
                     Amount = 0,
@@ -166,7 +166,7 @@ public class Payment : IPaymentProvider
             {
                 request = new PaymentRequest()
                 {
-                    TerminalIdentifier = straumurSettings.TerminalIdenitifer,
+                    TerminalIdentifier = straumurSettings.TerminalIdentifier,
                     Reference = reference,
                     Currency = paymentSettings.Currency,
                     Amount = (int)total * 100,
