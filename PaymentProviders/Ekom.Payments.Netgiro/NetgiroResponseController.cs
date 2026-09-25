@@ -48,7 +48,7 @@ public class NetgiroResponseController : ControllerBase
     [ApiExplorerSettings(IgnoreApi = true)]
     [HttpPost]
     [Route("")]
-    public async Task<IActionResult> Post([FromBody] Response netgiroResponse)
+    public async Task<IActionResult> Post([ModelBinder(BinderType = typeof(NetgiroResponseModelBinder))] Response netgiroResponse)
     {
         _logger.LogInformation("Netgiro Payment Response - Start");
 
