@@ -44,9 +44,9 @@ public class NetgiroResponseController : ControllerBase
     /// Receives a callback from Netgiro when customer completes payment.
     /// Changes order status and optionally runs a custom callback provided by the application consuming this library.
     /// </summary>
-    /// <param name="netgiroResponse">Netgiro querystring parameters</param>
+    /// <param name="netgiroResponse">Netgiro query-string or form parameters</param>
     [ApiExplorerSettings(IgnoreApi = true)]
-    [HttpPost]
+    [HttpGet, HttpPost]
     [Route("")]
     public async Task<IActionResult> Post([ModelBinder(BinderType = typeof(NetgiroResponseModelBinder))] Response netgiroResponse)
     {
@@ -105,7 +105,7 @@ public class NetgiroResponseController : ControllerBase
                         Amount = order.Amount.ToString(currencyFormat),
                     };
 
-                    using var db = _dbFac.GetDatabase();
+                    await using var db = _dbFac.GetDatabase();
                     await db.InsertOrReplaceAsync(paymentData);
                 }
                 // Intended to ward in case of breaking schema changes,
