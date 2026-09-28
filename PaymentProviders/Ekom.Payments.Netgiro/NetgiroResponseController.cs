@@ -105,7 +105,7 @@ public class NetgiroResponseController : ControllerBase
                         Amount = order.Amount.ToString(currencyFormat),
                     };
 
-                    using var db = _dbFac.GetDatabase();
+                    await using var db = _dbFac.GetDatabase();
                     await db.InsertOrReplaceAsync(paymentData);
                 }
                 // Intended to ward in case of breaking schema changes,

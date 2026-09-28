@@ -101,21 +101,12 @@ class Payment : IPaymentProvider
             {
                 { "ApplicationID", netgiroSettings.ApplicationId.ToString() },
                 { "ConfirmationType", ((int)ConfirmationType.ServerCallback).ToString() },
-
                 { "PaymentSuccessfulURL", paymentSettings.SuccessUrl.ToString() },
                 { "PaymentCancelledURL", paymentSettings.CancelUrl.ToString() },
                 { "PaymentConfirmedURL", reportUrl.ToString() },
-
                 { "TotalAmount",  FormatPrice(total)},
             };
-
-            //if (netgiroSettings.iFrame.HasValue)
-            //{
-            //    formValues.Add("iframe", netgiroSettings.iFrame.Value.ToString());
-            //}
-
-            var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
-
+            
             for (int lineNumber = 0, length = paymentSettings.Orders.Count(); lineNumber < length; lineNumber++)
             {
                 var order = paymentSettings.Orders.ElementAt(lineNumber);
@@ -125,9 +116,6 @@ class Payment : IPaymentProvider
                 formValues.Add($"Items[{lineNumber}].UnitPrice", FormatPrice(order.Price));
                 formValues.Add($"Items[{lineNumber}].Amount", FormatPrice(order.GrandTotal));
             }
-
-            // Netgiro only supports specific types of order id's
-            var borgunOrderId = orderStatus.UniqueId.ToString().Split('-').Last();
 
             var sig = CryptoHelpers.GetSHA256HexStringSum(
                 CombineSignature(

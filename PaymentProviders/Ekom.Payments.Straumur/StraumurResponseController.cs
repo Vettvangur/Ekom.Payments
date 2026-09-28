@@ -93,6 +93,7 @@ public class StraumurResponseController : ControllerBase
 
                     return NotFound();
                 }
+
                 var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
                 var straumurSettings = JsonConvert.DeserializeObject<StraumurSettings>(order.EkomPaymentProviderData);
 
