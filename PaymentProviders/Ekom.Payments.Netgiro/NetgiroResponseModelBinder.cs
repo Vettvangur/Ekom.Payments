@@ -15,13 +15,13 @@ public class NetgiroResponseModelBinder : IModelBinder
 
         string? GetValue(string key)
         {
-            if (query.TryGetValue(key, out var queryValue))
+            if (form != null && form.TryGetValue(key, out var formValue))
             {
-                return queryValue.FirstOrDefault();
+                return formValue.FirstOrDefault();
             }
 
-            return form != null && form.TryGetValue(key, out var formValue)
-                ? formValue.FirstOrDefault()
+            return query.TryGetValue(key, out var queryValue)
+                ? queryValue.FirstOrDefault()
                 : null;
         }
 
