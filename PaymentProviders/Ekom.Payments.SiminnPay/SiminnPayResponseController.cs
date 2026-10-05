@@ -145,18 +145,18 @@ public class SiminnPayResponseController : ControllerBase
                     _logger.LogError(ex, "SiminnPay Response - Error saving payment data");
                 }
 
-                if (Guid.TryParse(order.CustomData, out var orderKey))
-                {
-                    var svc = new SiminnPayService(siminnPaySettings, _logger);
-                    var confirmation = await svc.GetStatus(orderKey);
-                    if (confirmation?.Status != notificationCallBack.Status)
-                    {
-                        await Model.Events.OnErrorAsync(this, new ErrorEventArgs
-                        {
-                            OrderStatus = order,
-                        });
-                    }
-                }
+                //if (Guid.TryParse(order.CustomData, out var orderKey))
+                //{
+                //    var svc = new SiminnPayService(siminnPaySettings, _logger);
+                //    var confirmation = await svc.GetStatus(orderKey);
+                //    if (confirmation?.Status != notificationCallBack.Status)
+                //    {
+                //        await Model.Events.OnErrorAsync(this, new ErrorEventArgs
+                //        {
+                //            OrderStatus = order,
+                //        });
+                //    }
+                //}
 
                 if (notificationCallBack.Status == SiminnPayStatus.PaymentSuccessful)
                 {
