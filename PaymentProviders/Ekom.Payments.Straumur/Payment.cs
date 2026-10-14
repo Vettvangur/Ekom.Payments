@@ -180,7 +180,7 @@ public class Payment : IPaymentProvider
 
             if (straumurSettings.UseDelayedCapture && straumurSettings.DelayedCaptureDateTime.HasValue)
             {
-                var hoursUntilCapture = (int)(straumurSettings.DelayedCaptureDateTime.Value - DateTime.Now).TotalHours;
+                var hoursUntilCapture = (int)(straumurSettings.DelayedCaptureDateTime.Value - DateTime.UtcNow).TotalHours;
 
                 if (hoursUntilCapture > 0)
                 {
