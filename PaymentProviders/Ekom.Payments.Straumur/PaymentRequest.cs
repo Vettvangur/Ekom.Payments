@@ -23,6 +23,12 @@ public class PaymentRequest
     public string ReturnUrl { get; set; }
 
     /// <summary>
+    /// The URL to return to when the shopper abandons checkout. Must begin with http:// or https://.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AbandonUrl { get; set; }
+
+    /// <summary>
     /// The reference to uniquely identify a payment.
     /// </summary>
     public string Reference { get; set; }

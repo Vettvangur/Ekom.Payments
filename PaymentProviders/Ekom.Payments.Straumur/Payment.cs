@@ -178,6 +178,8 @@ public class Payment : IPaymentProvider
                 };
             }
 
+            request.AbandonUrl = cancelUrl.ToString();
+
             if (straumurSettings.UseDelayedCapture && straumurSettings.DelayedCaptureDateTime.HasValue)
             {
                 var hoursUntilCapture = (int)(straumurSettings.DelayedCaptureDateTime.Value - DateTime.UtcNow).TotalHours;
