@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Http;
+using System.Text.Json;
 
 namespace Ekom.Payments.Netgiro;
 
@@ -8,6 +9,29 @@ public class NetgiroResponseModelBinder : IModelBinder
     public async Task BindModelAsync(ModelBindingContext bindingContext)
     {
         var request = bindingContext.HttpContext.Request;
+        if (request.HasJsonContentType())
+        {
+            try
+            {
+                var jsonResponse = await request.ReadFromJsonAsync<Response>(
+                    cancellationToken: request.HttpContext.RequestAborted);
+                if (jsonResponse != null)
+                {
+                    bindingContext.Result = ModelBindingResult.Success(jsonResponse);
+                    return;
+                }
+
+                bindingContext.ModelState.AddModelError(bindingContext.ModelName, "A JSON response body is required.");
+            }
+            catch (JsonException)
+            {
+                bindingContext.ModelState.AddModelError(bindingContext.ModelName, "The response body contains invalid JSON.");
+            }
+
+            bindingContext.Result = ModelBindingResult.Failed();
+            return;
+        }
+
         var query = request.Query;
         IFormCollection? form = request.HasFormContentType
             ? await request.ReadFormAsync()
