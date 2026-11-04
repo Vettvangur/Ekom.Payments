@@ -22,9 +22,10 @@ class TeyaConsumerloansHostedService : IHostedService
 {
     readonly TeyaConsumerloansPollingService _pollingService;
 
-    public TeyaConsumerloansHostedService(TeyaConsumerloansPollingService pollingService)
+    public TeyaConsumerloansHostedService(TeyaConsumerloansPollingService pollingService, IHostApplicationLifetime lifetime)
     {
         _pollingService = pollingService;
+        _pollingService.ApplicationStarted = lifetime.ApplicationStarted;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)

@@ -43,12 +43,18 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ekom.Payments.U17", "Umbrac
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ekom.Payments.U18", "Umbraco\Ekom.Payments.U18\Ekom.Payments.U18.csproj", "{BBA7D7F8-1A97-4A2D-9DD1-DBE8F6493D0E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ekom.Payments.Tests", "Tests\Ekom.Payments.Tests\Ekom.Payments.Tests.csproj", "{8D223BF7-4027-49B6-8346-A81F67C22790}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8D223BF7-4027-49B6-8346-A81F67C22790}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D223BF7-4027-49B6-8346-A81F67C22790}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8D223BF7-4027-49B6-8346-A81F67C22790}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8D223BF7-4027-49B6-8346-A81F67C22790}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B0D3CB55-D6A4-4CFC-A92D-EA48B0746097}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B0D3CB55-D6A4-4CFC-A92D-EA48B0746097}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B0D3CB55-D6A4-4CFC-A92D-EA48B0746097}.Release|Any CPU.ActiveCfg = Release|Any CPU

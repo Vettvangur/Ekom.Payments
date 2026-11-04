@@ -55,15 +55,15 @@ internal class TeyaConsumerloansClient
     /// Polls <c>GET /online/status</c> and returns the raw status string.
     /// Known values: CREATED, INPROGRESS, PENDING, SUCCESS, FAILED, CANCELED, PROGRESSEXPIRED, TOKENEXPIRED.
     /// </summary>
-    public async Task<string> GetStatusAsync(TeyaConsumerloansSettings settings, string token)
+    public async Task<string> GetStatusAsync(TeyaConsumerloansSettings settings, string token, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(settings.MerchantId);
 
         var path = $"online/status?token={Uri.EscapeDataString(token)}&merchantNumber={Uri.EscapeDataString(settings.MerchantId)}";
         using var httpRequest = CreateRequest(settings, HttpMethod.Get, path);
 
-        using var response = await SendAsync(httpRequest).ConfigureAwait(false);
-        var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        using var response = await SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         return DeserializeStringResponse(responseBody);
     }
 
@@ -80,21 +80,26 @@ internal class TeyaConsumerloansClient
         return httpRequest;
     }
 
-    async Task<HttpResponseMessage> SendAsync(HttpRequestMessage httpRequest)
+    async Task<HttpResponseMessage> SendAsync(HttpRequestMessage httpRequest, CancellationToken cancellationToken = default)
     {
         var httpClient = _httpClientFactory.CreateClient();
-        var response = await httpClient.SendAsync(httpRequest).ConfigureAwait(false);
+        var response = await httpClient.SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
-            var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             _logger.LogError(
-                "Teya Consumer Loans request failed. Method: {Method} Url: {Url} Status: {StatusCode} Body: {ResponseBody}",
+                "Teya Consumer Loans request failed. Method: {Method} Path: {Path} Status: {StatusCode}",
                 httpRequest.Method,
-                httpRequest.RequestUri,
-                response.StatusCode,
-                responseBody);
-            response.EnsureSuccessStatusCode();
+                httpRequest.RequestUri?.AbsolutePath,
+                response.StatusCode);
+            try
+            {
+                response.EnsureSuccessStatusCode();
+            }
+            finally
+            {
+                response.Dispose();
+            }
         }
 
         return response;
