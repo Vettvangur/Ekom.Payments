@@ -6,4 +6,6 @@ public class PollingRequest
     public required string Token { get; set; }
     public required Uri RedirectUrl { get; set; }
     public required TeyaConsumerloansSettings Settings { get; set; }
+
+    internal DateTimeOffset? RecoveryDeadlineUtc { get; set; }
 }

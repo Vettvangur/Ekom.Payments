@@ -93,6 +93,7 @@ public class Payment : IPaymentProvider
             var client = new TeyaConsumerloansClient(_httpClientFactory, _logger);
             var token = await client.CreateWebTokenAsync(teyaSettings, request).ConfigureAwait(false);
 
+            TeyaConsumerloansPollingService.EnableRecovery(paymentSettings, successUrl);
             var orderStatus = await _orderService.InsertAsync(
                 total,
                 paymentSettings,

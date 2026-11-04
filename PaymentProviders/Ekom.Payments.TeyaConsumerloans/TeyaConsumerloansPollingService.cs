@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System.Globalization;
+using System.Net;
 using System.Net.Mail;
 using System.Threading.Channels;
 
@@ -18,6 +19,7 @@ namespace Ekom.Payments.TeyaConsumerloans;
 /// Callers enqueue an order via <see cref="Enqueue"/> and return immediately.
 /// The service owns the per-order <see cref="CancellationTokenSource"/> lifetime and
 /// tracks all active polling tasks so they finish gracefully on host shutdown.
+/// New attempts are marked in their saved payment settings for one-time startup recovery.
 /// </para>
 /// </summary>
 public class TeyaConsumerloansPollingService : BackgroundService
@@ -33,6 +35,11 @@ public class TeyaConsumerloansPollingService : BackgroundService
     };
 
     const string SuccessStatus = "SUCCESS";
+    internal const string RecoveryKey = "teyaConsumerloansPolling";
+    internal const string RecoveryPending = "pending";
+    internal const string RecoveryFinished = "finished";
+
+    internal CancellationToken ApplicationStarted { get; set; }
 
     readonly Channel<PollingRequest> _queue = Channel.CreateUnbounded<PollingRequest>(
         new UnboundedChannelOptions { SingleReader = true });
@@ -75,54 +82,228 @@ public class TeyaConsumerloansPollingService : BackgroundService
     {
         var activeTasks = new List<Task>();
 
-        await foreach (var req in _queue.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
+        try
         {
-            activeTasks.RemoveAll(t => t.IsCompleted);
+            if (ApplicationStarted.CanBeCanceled)
+            {
+                var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                using var registration = ApplicationStarted.Register(() => ready.TrySetResult());
+                await ready.Task.WaitAsync(stoppingToken).ConfigureAwait(false);
+            }
 
-            // CTS is linked to stoppingToken so all polls are cancelled on host shutdown.
-            // Ownership transfers to PollOrderAsync which disposes it when done.
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-            cts.CancelAfter(TimeSpan.FromMinutes(req.Settings.TokenValidMinutes!.Value));
-            activeTasks.Add(PollOrderAsync(req, cts));
+            try
+            {
+                foreach (var request in await GetRecoveryRequestsAsync(stoppingToken).ConfigureAwait(false))
+                {
+                    Enqueue(request);
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // A failed startup scan must not stop polling for new payments.
+                _logger.LogError(ex, "Teya Consumer Loans startup recovery failed; new payments will still be monitored.");
+            }
+
+            await foreach (var req in _queue.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
+            {
+                activeTasks.RemoveAll(t => t.IsCompleted);
+                activeTasks.Add(PollOrderAsync(req, stoppingToken));
+            }
         }
-
-        // Drain: wait for all in-flight polls to finish before the host tears down.
-        if (activeTasks.Count > 0)
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+        finally
         {
             await Task.WhenAll(activeTasks).ConfigureAwait(false);
         }
     }
 
-    async Task PollOrderAsync(PollingRequest request, CancellationTokenSource cts)
+    internal static TimeSpan GetPollingTimeout(TeyaConsumerloansSettings settings)
     {
-        // cts is disposed here, after PollAsync finishes, not in the caller.
-        using (cts)
+        // TokenValidMinutes allows opening the URL. ProgressValidMinutes allows
+        // completing the loan after opening it, so both windows must be covered
+        var operationalBuffer = TimeSpan.FromSeconds(30);
+        return TimeSpan.FromMinutes(settings.TokenValidMinutes!.Value + settings.ProgressValidMinutes!.Value) + operationalBuffer;
+    }
+
+    internal static void EnableRecovery(PaymentSettings settings, Uri redirectUrl)
+    {
+        settings.OrderCustomData[RecoveryKey] = RecoveryPending;
+        // Recovery needs the exact absolute URL used when requesting the token.
+        settings.SuccessUrl = redirectUrl;
+    }
+
+    internal async Task<IReadOnlyList<PollingRequest>> GetRecoveryRequestsAsync(CancellationToken ct = default)
+    {
+        await using var db = _dbFac.GetDatabase();
+        var orders = await db.OrderStatus
+            .Where(x => !x.Paid && x.EkomPaymentSettingsData.Contains(RecoveryKey))
+            .ToListAsync(ct).ConfigureAwait(false);
+        var requests = new List<PollingRequest>();
+        foreach (var order in orders)
         {
-            await PollAsync(request, cts.Token).ConfigureAwait(false);
+            try
+            {
+                var paymentSettings = order.EkomPaymentSettings;
+                if (!paymentSettings.OrderCustomData.TryGetValue(RecoveryKey, out var state) || state != RecoveryPending)
+                {
+                    continue;
+                }
+                var settings = JsonConvert.DeserializeObject<TeyaConsumerloansSettings>(order.EkomPaymentProviderData!)!;
+                requests.Add(new PollingRequest
+                {
+                    OrderId = order.UniqueId,
+                    Token = order.CustomData!,
+                    RedirectUrl = paymentSettings.SuccessUrl,
+                    Settings = settings,
+                    // OrderService stores DateTime.Now. Convert from that same local
+                    // time convention; never grant a fresh window after a restart.
+                    RecoveryDeadlineUtc = new DateTimeOffset(order.Date).ToUniversalTime() + GetPollingTimeout(settings),
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Teya Consumer Loans recovery could not read payment attempt {OrderId}.", order.UniqueId);
+            }
+        }
+        return requests;
+    }
+
+    internal async Task PollOrderAsync(PollingRequest request, CancellationToken stoppingToken, TimeProvider? timeProvider = null)
+    {
+        timeProvider ??= TimeProvider.System;
+        var remaining = request.RecoveryDeadlineUtc - timeProvider.GetUtcNow() ?? GetPollingTimeout(request.Settings);
+        var checkOnce = request.RecoveryDeadlineUtc.HasValue && remaining <= TimeSpan.Zero;
+        using var timeout = checkOnce ? new CancellationTokenSource() : new CancellationTokenSource(remaining, timeProvider);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, timeout.Token);
+
+        try
+        {
+            var message = request.RecoveryDeadlineUtc.HasValue
+                ? checkOnce ? "Startup recovery: monitoring window elapsed; checking the loan status once."
+                    : $"Startup recovery: monitoring resumed with {Math.Ceiling(remaining.TotalSeconds)} seconds remaining in the original window."
+                : "Loan application started; monitoring payment status.";
+            await ActivityAsync(request, message).ConfigureAwait(false);
+            await PollAsync(request, timeProvider, cts.Token, checkOnce).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            await ActivityAsync(request, "Payment monitoring stopped because the application is shutting down; check the loan status with Teya.", LogLevel.Warning).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            await ActivityAsync(request, "Payment monitoring timed out without a final status; check the loan status with Teya before retrying payment.", LogLevel.Warning).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Teya Consumer Loans polling failed. OrderId: {OrderId}", request.OrderId);
+            await ActivityAsync(request, $"Payment monitoring or completion failed ({ex.GetType().Name}); check the payment before retrying.", LogLevel.Error).ConfigureAwait(false);
         }
     }
 
-    async Task PollAsync(PollingRequest request, CancellationToken cancellationToken)
+    async Task PollAsync(PollingRequest request, TimeProvider timeProvider, CancellationToken cancellationToken, bool checkOnce)
     {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var status = await _client.GetStatusAsync(request.Settings, request.Token).ConfigureAwait(false);
+        string? lastStatus = null;
+        var statusCheckFailed = false;
 
-            _logger.LogDebug("Teya Consumer Loans Polling Service - OrderId: {OrderId} Status: {Status}", request.OrderId, status);
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string status;
+            try
+            {
+                status = await _client.GetStatusAsync(request.Settings, request.Token, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!checkOnce && !cancellationToken.IsCancellationRequested &&
+                (ex is HttpRequestException httpError && IsTransient(httpError) || ex is OperationCanceledException))
+            {
+                _logger.LogWarning(ex, "Teya Consumer Loans status check failed; retrying. OrderId: {OrderId}", request.OrderId);
+                if (!statusCheckFailed)
+                {
+                    await ActivityAsync(request, "Temporary status check failure; retrying within the payment monitoring window.", LogLevel.Warning).ConfigureAwait(false);
+                    statusCheckFailed = true;
+                }
+                await Task.Delay(PollingInterval, timeProvider, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            if (statusCheckFailed)
+            {
+                await ActivityAsync(request, "Payment status checks resumed.").ConfigureAwait(false);
+                statusCheckFailed = false;
+            }
+
+            if (!string.Equals(status, lastStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                await ActivityAsync(request, $"Loan status changed: {lastStatus ?? "not checked"} -> {status}.",
+                    TerminalStatuses.Contains(status) ? LogLevel.Warning : LogLevel.Information).ConfigureAwait(false);
+                lastStatus = status;
+            }
 
             if (TerminalStatuses.Contains(status))
             {
-                _logger.LogInformation("Teya Consumer Loans Polling Service - Terminal status {Status} for OrderId: {OrderId}.", status, request.OrderId);
+                await FinishRecoveryAsync(request).ConfigureAwait(false);
                 break;
             }
 
             if (string.Equals(status, SuccessStatus, StringComparison.OrdinalIgnoreCase))
             {
+                // Do not retry validation or success callbacks as part of status
+                // polling. Their existing error handling remains unchanged.
                 await MarkAsPaid(request).ConfigureAwait(false);
+                await FinishRecoveryAsync(request).ConfigureAwait(false);
                 break;
             }
 
-            await Task.Delay(PollingInterval, cancellationToken).ConfigureAwait(false);
+            if (checkOnce)
+            {
+                await ActivityAsync(request, $"Startup recovery: overdue loan is still {status}; manual review is required. Automatic recovery finished.", LogLevel.Warning).ConfigureAwait(false);
+                await FinishRecoveryAsync(request).ConfigureAwait(false);
+                break;
+            }
+
+            await Task.Delay(PollingInterval, timeProvider, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    static bool IsTransient(HttpRequestException exception)
+    {
+        return exception.StatusCode == null
+            || exception.StatusCode == HttpStatusCode.RequestTimeout
+            || exception.StatusCode == HttpStatusCode.TooManyRequests
+            || (int)exception.StatusCode >= 500;
+    }
+
+    async Task FinishRecoveryAsync(PollingRequest request)
+    {
+        try
+        {
+            var order = await _orderService.GetAsync(request.OrderId).ConfigureAwait(false);
+            if (order == null)
+            {
+                return;
+            }
+            var settings = order.EkomPaymentSettings;
+            if (!settings.OrderCustomData.ContainsKey(RecoveryKey))
+            {
+                return;
+            }
+            settings.OrderCustomData[RecoveryKey] = RecoveryFinished;
+            await using var db = _dbFac.GetDatabase();
+            // Only update the recovery metadata, never overwrite Paid or other
+            // payment columns with an older snapshot of the attempt.
+            await db.OrderStatus.Where(x => x.UniqueId == request.OrderId)
+                .Set(x => x.EkomPaymentSettingsData, JsonConvert.SerializeObject(settings))
+                .UpdateAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Teya Consumer Loans recovery state could not be saved. OrderId: {OrderId}; a later restart may check it again.", request.OrderId);
         }
     }
 
@@ -130,7 +311,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
     {
         ArgumentNullException.ThrowIfNull(request.Settings.MerchantId);
 
-        _logger.LogInformation("Teya Consumer Loans Response - Start. Token: {Token}", request.Token);
+        _logger.LogInformation("Teya Consumer Loans Response - Start. OrderId: {OrderId}", request.OrderId);
 
         var order = await _orderService.GetAsync(request.OrderId);
         if (order == null)
@@ -176,6 +357,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
 
             order.Paid = true;
             await _orderService.UpdateAsync(order).ConfigureAwait(false);
+            await ActivityAsync(request, "Loan validated; payment recorded. Completing the Ekom order.", success: true).ConfigureAwait(false);
 
             using (_paymentExecutionContext.EnsureContext())
             {
@@ -186,6 +368,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
             }
 
             _logger.LogInformation("Teya Consumer Loans Response - SUCCESS. OrderId: {OrderId}", order.UniqueId);
+            await ActivityAsync(request, "Payment success notification delivered to Ekom.").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -210,6 +393,30 @@ public class TeyaConsumerloansPollingService : BackgroundService
             }
 
             throw;
+        }
+    }
+
+    async Task ActivityAsync(PollingRequest request, string message, LogLevel level = LogLevel.Information, bool success = false)
+    {
+        _logger.Log(level, "Teya Consumer Loans - OrderId: {OrderId}; {Activity}", request.OrderId, message);
+        try
+        {
+            var order = await _orderService.GetAsync(request.OrderId).ConfigureAwait(false);
+            if (order != null)
+            {
+                await Events.OnActivityAsync(this, new LoanActivityEventArgs
+                {
+                    PaymentId = request.OrderId,
+                    PaymentSettings = order.EkomPaymentSettings,
+                    Message = message,
+                    Level = level,
+                    IsSuccess = success,
+                }).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Teya Consumer Loans activity log failed. OrderId: {OrderId}", request.OrderId);
         }
     }
 }
