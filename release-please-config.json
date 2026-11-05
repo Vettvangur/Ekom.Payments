@@ -1,0 +1,146 @@
+{
+  "pullRequestTitlePattern": "chore${scope}: release ${component} ${version}",
+  "packages": {
+    ".": {
+      "component": "Ekom.Payments",
+      "package-name": "Ekom.Payments",
+      "include-component-in-tag": true,
+      "release-type": "simple",
+      "versioning": "always-bump-patch",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Payments.Version.props",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ],
+      "exclude-paths": [
+        "PaymentProviders",
+        "Tests"
+      ]
+    },
+    "PaymentProviders/Ekom.Payments.Valitor": {
+      "component": "Ekom.Payments.Valitor",
+      "package-name": "Ekom.Payments.Valitor",
+      "include-component-in-tag": true,
+      "release-type": "simple",
+      "versioning": "always-bump-patch",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Ekom.Payments.Valitor.csproj",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ]
+    },
+    "PaymentProviders/Ekom.Payments.Borgun": {
+      "component": "Ekom.Payments.Borgun",
+      "package-name": "Ekom.Payments.Borgun",
+      "include-component-in-tag": true,
+      "release-type": "simple",
+      "versioning": "always-bump-patch",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Ekom.Payments.Borgun.csproj",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ]
+    },
+    "PaymentProviders/Ekom.Payments.Netgiro": {
+      "component": "Ekom.Payments.Netgiro",
+      "package-name": "Ekom.Payments.Netgiro",
+      "include-component-in-tag": true,
+      "release-type": "simple",
+      "versioning": "always-bump-patch",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Ekom.Payments.Netgiro.csproj",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ]
+    },
+    "PaymentProviders/Ekom.Payments.Straumur": {
+      "component": "Ekom.Payments.Straumur",
+      "package-name": "Ekom.Payments.Straumur",
+      "include-component-in-tag": true,
+      "release-type": "simple",
+      "versioning": "always-bump-patch",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Ekom.Payments.Straumur.csproj",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ]
+    },
+    "PaymentProviders/Ekom.Payments.AltaPay": {
+      "component": "Ekom.Payments.AltaPay",
+      "package-name": "Ekom.Payments.AltaPay",
+      "include-component-in-tag": true,
+      "release-type": "simple",
+      "versioning": "always-bump-patch",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Ekom.Payments.AltaPay.csproj",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ]
+    },
+    "PaymentProviders/Ekom.Payments.SiminnPay": {
+      "component": "Ekom.Payments.SiminnPay",
+      "package-name": "Ekom.Payments.SiminnPay",
+      "include-component-in-tag": true,
+      "release-type": "simple",
+      "versioning": "always-bump-patch",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Ekom.Payments.SiminnPay.csproj",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ]
+    },
+    "PaymentProviders/Ekom.Payments.PayTrail": {
+      "component": "Ekom.Payments.PayTrail",
+      "package-name": "Ekom.Payments.PayTrail",
+      "include-component-in-tag": true,
+      "release-type": "simple",
+      "versioning": "always-bump-patch",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Ekom.Payments.PayTrail.csproj",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ]
+    },
+    "PaymentProviders/Ekom.Payments.TeyaConsumerloans": {
+      "component": "Ekom.Payments.TeyaConsumerloans",
+      "package-name": "Ekom.Payments.TeyaConsumerloans",
+      "include-component-in-tag": true,
+      "release-type": "simple",
+      "versioning": "always-bump-patch",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Ekom.Payments.TeyaConsumerloans.csproj",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ]
+    }
+  },
+  "bootstrap-sha": "9370e11512b0cb13156defb65ab6f30ddf7ff0d0",
+  "separate-pull-requests": true
+}
