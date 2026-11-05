@@ -5,14 +5,19 @@ on:
     tags:
       - "Ekom.Payments-v*"
       - "Ekom.Payments.*-v*"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to publish with this workflow version
+        required: false
+        type: string
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: publish-payments-${{ github.ref }}
+  group: publish-payments-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -23,11 +28,13 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
 
       - name: Validate release version
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
-          RELEASE_REF_TYPE: ${{ github.ref_type }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+          RELEASE_REF_TYPE: ${{ inputs.release_tag && 'tag' || github.ref_type }}
         run: |
           $ErrorActionPreference = "Stop"
           if ($env:RELEASE_REF_TYPE -ne "tag" -or $env:RELEASE_TAG -notmatch '^(?<component>Ekom\.Payments(?:\.[A-Za-z]+)?)-v(?<version>0\.2\.\d+)$') {
@@ -40,8 +47,12 @@ jobs:
           $group = $groups[$component]
           [xml] $props = Get-Content $group['version-file'] -Raw
           $manifest = Get-Content ".release-please-manifest.json" -Raw | ConvertFrom-Json -AsHashtable
-          if ($props.Project.PropertyGroup.Version -ne $version -or $manifest[$group.path] -ne $version) {
-            throw "Tag, component build version, and release manifest versions must match."
+          $versionNodes = $props.SelectNodes('/Project/PropertyGroup/Version')
+          if ($versionNodes.Count -ne 1) { throw "Expected exactly one component Version element." }
+          $buildVersion = $versionNodes[0].InnerText
+          $manifestVersion = $manifest[$group.path]
+          if ($buildVersion -ne $version -or $manifestVersion -ne $version) {
+            throw "Version mismatch for ${component}: tag=$version, build=$buildVersion, manifest=$manifestVersion"
           }
           "RELEASE_COMPONENT=$component" >> $env:GITHUB_ENV
           "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
@@ -65,7 +76,7 @@ jobs:
             $properties = @()
             if ($env:RELEASE_COMPONENT -ne "Ekom.Payments") {
               [xml] $provider = Get-Content $project -Raw
-              $coreVersion = [string] $provider.Project.PropertyGroup.CorePackageVersion
+              $coreVersion = $provider.SelectSingleNode('/Project/PropertyGroup/CorePackageVersion').InnerText
               $published = Invoke-RestMethod "https://api.nuget.org/v3-flatcontainer/ekom.payments.core/index.json"
               if ($coreVersion -notin $published.versions) {
                 throw "Core $coreVersion must be published on NuGet.org before releasing this provider."
@@ -85,12 +96,12 @@ jobs:
           $projects = $groups[$env:RELEASE_COMPONENT].projects
           $ids = @($projects | ForEach-Object {
             [xml] $project = Get-Content $_ -Raw
-            [string] ($project.Project.PropertyGroup.PackageId | Where-Object { $_ })
+            $project.SelectSingleNode('/Project/PropertyGroup/PackageId').InnerText
           })
           $coreVersion = $null
           if ($env:RELEASE_COMPONENT -ne "Ekom.Payments") {
             [xml] $provider = Get-Content $projects[0] -Raw
-            $coreVersion = [string] $provider.Project.PropertyGroup.CorePackageVersion
+            $coreVersion = $provider.SelectSingleNode('/Project/PropertyGroup/CorePackageVersion').InnerText
             if ($coreVersion -notmatch '^0\.2\.\d+$') { throw "Invalid published Core version." }
           }
           $packages = @(Get-ChildItem artifacts -Filter *.nupkg -File)

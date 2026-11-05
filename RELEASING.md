@@ -78,7 +78,7 @@ dependencies, retains package/symbol artifacts, and publishes through NuGet OIDC
 Azure's private symbol server is no longer used.
 
 Rerun a failed workflow or manually dispatch against its existing release tag.
-Branch dispatches and unknown components are rejected. Duplicate NuGet versions
+Branch dispatches without an explicit release tag and unknown components are rejected. Duplicate NuGet versions
 are skipped so an interrupted release can resume. Version-line changes require
 updating both the release policy and workflow validation deliberately.
 
@@ -92,3 +92,9 @@ Merge one release PR at a time, then wait for the `release-please` workflow on
 `main` to finish before merging the next. Adjacent entries in the shared manifest
 can temporarily conflict until that refresh completes. Independent package
 versions and separate provider PRs are preserved.
+
+To recover a release blocked by a workflow bug, dispatch `publish-payments` using
+`main` as the workflow branch and set `release_tag` to the existing tag (for
+example `Ekom.Payments.TeyaConsumerloans-v0.2.98`). This uses the corrected workflow
+from main while checking out and validating the original tagged package source.
+Do not move the release tag. Rerunning the old failed run uses its old workflow.
