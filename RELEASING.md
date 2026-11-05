@@ -1,7 +1,7 @@
 # Publishing Payments
 
 Payments uses release-please on `main` and a single GitHub Actions publishing
-workflow, `publish-payments.yml`. Release groups are defined in
+workflow, `publish-ekom-payments.yml`. Release groups are defined in
 `.github/publish-projects.json`.
 
 ## Independent versions
@@ -62,7 +62,7 @@ Consumers can update Core independently where it satisfies their dependencies.
    issues, and pull requests write access. A separate token lets created tags trigger
    publishing; the default `GITHUB_TOKEN` does not.
 4. Use the NuGet trusted publishing policy for owner `Vettvangur`, repository
-   `Ekom.Payments`, workflow `publish-payments.yml`, and NuGet user `Vettvangur`,
+   `Ekom.Payments`, workflow `publish-ekom-payments.yml`, and NuGet user `Vettvangur`,
    covering all 13 packages. No GitHub environment is used. All provider tags
    run the same workflow, so no additional workflow names are needed.
 5. Merge the migration with a conventional release-worthy title, such as

@@ -11,7 +11,7 @@ import unittest
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = (ROOT / '.github/workflows/publish-payments.yml').read_text()
+WORKFLOW = (ROOT / '.github/workflows/publish-ekom-payments.yml').read_text()
 
 
 def step_script(name):
