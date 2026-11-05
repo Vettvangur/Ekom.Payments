@@ -81,3 +81,14 @@ Rerun a failed workflow or manually dispatch against its existing release tag.
 Branch dispatches and unknown components are rejected. Duplicate NuGet versions
 are skipped so an interrupted release can resume. Version-line changes require
 updating both the release policy and workflow validation deliberately.
+
+## Merging multiple release PRs
+
+Release-please runs are serialized and refresh open release PRs even when their
+release notes have not changed. This keeps each branch's shared manifest current
+with versions released by other PRs and avoids overlapping bot writes.
+
+Merge one release PR at a time, then wait for the `release-please` workflow on
+`main` to finish before merging the next. Adjacent entries in the shared manifest
+can temporarily conflict until that refresh completes. Independent package
+versions and separate provider PRs are preserved.
