@@ -7,7 +7,9 @@
 
         <!-- Package properties -->
         <PackageId>Ekom.Payments.SiminnPay</PackageId>
-        <Version>0.0.1</Version>
+        <Version>0.2.97</Version>
+        <!-- Minimum published Core version used when packaging this provider. -->
+        <CorePackageVersion>0.2.97</CorePackageVersion>
         <Title>Ekom Payments SiminnPay</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -54,7 +56,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\Core\Ekom.Payments.Core.csproj" />
+      <ProjectReference Include="..\..\Core\Ekom.Payments.Core.csproj" Condition="'$(UsePublishedCore)' != 'true'" />
+        <PackageReference Include="Ekom.Payments.Core" Version="$(CorePackageVersion)" Condition="'$(UsePublishedCore)' == 'true'" />
     </ItemGroup>
 
     <ItemGroup>

@@ -4,7 +4,9 @@
 - Restore/build from the repo root: `dotnet restore Ekom.Payments.sln` then `dotnet build Ekom.Payments.sln --no-restore`.
 - The solution includes `Umbraco/Ekom.Payments.U17`, which targets `net10.0`; a .NET 10 SDK is required for full-solution builds.
 - To verify one package without building everything: `dotnet build <path-to-csproj> --no-restore` after restore.
-- There is no active CI test step; Azure Pipelines restores, packs selected projects, and pushes NuGet packages on `main` only.
+- Run the active test suite: `dotnet test Tests/Ekom.Payments.Tests/Ekom.Payments.Tests.csproj -c Release`.
+- There is no active CI test step; GitHub Actions publishes only the group selected by its component tag in `.github/publish-projects.json` (`Ekom.Payments-v0.2.x` or `Ekom.Payments.<Provider>-v0.2.x`).
+- Release-please runs on `main`. Core/AspNetCore/Umbraco share `Payments.Version.props`; providers have independent project versions and `CorePackageVersion` dependencies. Provider publishing builds with `UsePublishedCore=true` against NuGet Core. Each component version, its `.release-please-manifest.json` entry, and its release tag must agree. See `RELEASING.md` for setup and cutover.
 
 ## Project layout
 - `Core/` defines the shared payment abstractions (`IPaymentProvider`, `PaymentSettings`, `OrderService`, DB models/helpers).

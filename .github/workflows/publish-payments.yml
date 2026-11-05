@@ -1,0 +1,148 @@
+name: publish-payments
+
+on:
+  push:
+    tags:
+      - "Ekom.Payments-v*"
+      - "Ekom.Payments.*-v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-payments-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-payments:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:RELEASE_REF_TYPE -ne "tag" -or $env:RELEASE_TAG -notmatch '^(?<component>Ekom\.Payments(?:\.[A-Za-z]+)?)-v(?<version>0\.2\.\d+)$') {
+            throw "Payments releases must use a configured component-v0.2.x tag."
+          }
+          $version = $Matches['version']
+          $component = $Matches['component']
+          $groups = Get-Content ".github/publish-projects.json" -Raw | ConvertFrom-Json -AsHashtable
+          if (-not $groups.ContainsKey($component)) { throw "Unknown release component $component" }
+          $group = $groups[$component]
+          [xml] $props = Get-Content $group['version-file'] -Raw
+          $manifest = Get-Content ".release-please-manifest.json" -Raw | ConvertFrom-Json -AsHashtable
+          if ($props.Project.PropertyGroup.Version -ne $version -or $manifest[$group.path] -ne $version) {
+            throw "Tag, component build version, and release manifest versions must match."
+          }
+          "RELEASE_COMPONENT=$component" >> $env:GITHUB_ENV
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Restore, build, and pack packages
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $groups = Get-Content ".github/publish-projects.json" -Raw | ConvertFrom-Json -AsHashtable
+          $projects = $groups[$env:RELEASE_COMPONENT].projects
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          foreach ($project in $projects) {
+            # Providers compile against their declared published Core dependency,
+            # even when this checkout contains a newer, unreleased Core version.
+            $properties = @()
+            if ($env:RELEASE_COMPONENT -ne "Ekom.Payments") {
+              [xml] $provider = Get-Content $project -Raw
+              $coreVersion = [string] $provider.Project.PropertyGroup.CorePackageVersion
+              $published = Invoke-RestMethod "https://api.nuget.org/v3-flatcontainer/ekom.payments.core/index.json"
+              if ($coreVersion -notin $published.versions) {
+                throw "Core $coreVersion must be published on NuGet.org before releasing this provider."
+              }
+              $properties = @("-p:UsePublishedCore=true", "-p:NuGetLockFilePath=obj/published-core.packages.lock.json")
+            }
+            dotnet restore $project @properties
+            dotnet build $project -c Release --no-restore -p:ContinuousIntegrationBuild=true @properties
+            dotnet pack $project -c Release --no-build -o artifacts -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg @properties
+          }
+
+      - name: Verify package versions and internal dependencies
+        run: |
+          $ErrorActionPreference = "Stop"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $groups = Get-Content ".github/publish-projects.json" -Raw | ConvertFrom-Json -AsHashtable
+          $projects = $groups[$env:RELEASE_COMPONENT].projects
+          $ids = @($projects | ForEach-Object {
+            [xml] $project = Get-Content $_ -Raw
+            [string] ($project.Project.PropertyGroup.PackageId | Where-Object { $_ })
+          })
+          $coreVersion = $null
+          if ($env:RELEASE_COMPONENT -ne "Ekom.Payments") {
+            [xml] $provider = Get-Content $projects[0] -Raw
+            $coreVersion = [string] $provider.Project.PropertyGroup.CorePackageVersion
+            if ($coreVersion -notmatch '^0\.2\.\d+$') { throw "Invalid published Core version." }
+          }
+          $packages = @(Get-ChildItem artifacts -Filter *.nupkg -File)
+          if ($packages.Count -ne $ids.Count) { throw "Unexpected package count." }
+          foreach ($id in $ids) {
+            $path = Join-Path artifacts "$id.$env:RELEASE_VERSION.nupkg"
+            if (-not (Test-Path $path)) { throw "Missing package $path" }
+            if (-not (Test-Path (Join-Path artifacts "$id.$env:RELEASE_VERSION.snupkg"))) {
+              throw "Missing symbols for $id"
+            }
+            $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $path))
+            try {
+              $entry = $zip.Entries | Where-Object { $_.FullName -like '*.nuspec' }
+              $reader = [System.IO.StreamReader]::new($entry.Open())
+              try { [xml] $nuspec = $reader.ReadToEnd() } finally { $reader.Dispose() }
+              $metadata = $nuspec.SelectSingleNode("//*[local-name()='metadata']")
+              if ($metadata.id -ne $id -or $metadata.version -ne $env:RELEASE_VERSION) {
+                throw "Incorrect package identity or version in $path"
+              }
+              $dependencies = $nuspec.SelectNodes("//*[local-name()='dependency']")
+              if ($coreVersion -and -not ($dependencies | Where-Object { $_.id -eq 'Ekom.Payments.Core' })) {
+                throw "Provider $id is missing its Core dependency."
+              }
+              foreach ($dependency in $dependencies) {
+                if ($coreVersion -and $dependency.id -eq 'Ekom.Payments.Core' -and $dependency.version -notin @($coreVersion, "[$coreVersion, )", "[$coreVersion]")) {
+                  throw "Provider $id must depend on published Core $coreVersion."
+                }
+                if ($dependency.id -in $ids -and $dependency.version -notin @($env:RELEASE_VERSION, "[$env:RELEASE_VERSION, )", "[$env:RELEASE_VERSION]")) {
+                  throw "Mismatched internal dependency in ${id}: $($dependency.id) $($dependency.version)"
+                }
+              }
+            } finally { $zip.Dispose() }
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.RELEASE_COMPONENT }}-${{ env.RELEASE_VERSION }}
+          path: artifacts/*
+          if-no-files-found: error
+
+      - name: NuGet Login (OIDC)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: Vettvangur
+
+      - name: Push to NuGet.org
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          foreach ($package in Get-ChildItem artifacts -Filter *.nupkg -File) {
+            dotnet nuget push $package.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+          }

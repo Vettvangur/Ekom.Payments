@@ -1,0 +1,69 @@
+{
+  "Ekom.Payments": {
+    "path": ".",
+    "version-file": "Payments.Version.props",
+    "projects": [
+      "Core/Ekom.Payments.Core.csproj",
+      "AspNetCore/Ekom.Payments.AspNetCore.csproj",
+      "Umbraco/Ekom.Payments.U10/Ekom.Payments.U10.csproj",
+      "Umbraco/Ekom.Payments.U17/Ekom.Payments.U17.csproj",
+      "Umbraco/Ekom.Payments.U18/Ekom.Payments.U18.csproj"
+    ]
+  },
+  "Ekom.Payments.Valitor": {
+    "path": "PaymentProviders/Ekom.Payments.Valitor",
+    "version-file": "PaymentProviders/Ekom.Payments.Valitor/Ekom.Payments.Valitor.csproj",
+    "projects": [
+      "PaymentProviders/Ekom.Payments.Valitor/Ekom.Payments.Valitor.csproj"
+    ]
+  },
+  "Ekom.Payments.Borgun": {
+    "path": "PaymentProviders/Ekom.Payments.Borgun",
+    "version-file": "PaymentProviders/Ekom.Payments.Borgun/Ekom.Payments.Borgun.csproj",
+    "projects": [
+      "PaymentProviders/Ekom.Payments.Borgun/Ekom.Payments.Borgun.csproj"
+    ]
+  },
+  "Ekom.Payments.Netgiro": {
+    "path": "PaymentProviders/Ekom.Payments.Netgiro",
+    "version-file": "PaymentProviders/Ekom.Payments.Netgiro/Ekom.Payments.Netgiro.csproj",
+    "projects": [
+      "PaymentProviders/Ekom.Payments.Netgiro/Ekom.Payments.Netgiro.csproj"
+    ]
+  },
+  "Ekom.Payments.Straumur": {
+    "path": "PaymentProviders/Ekom.Payments.Straumur",
+    "version-file": "PaymentProviders/Ekom.Payments.Straumur/Ekom.Payments.Straumur.csproj",
+    "projects": [
+      "PaymentProviders/Ekom.Payments.Straumur/Ekom.Payments.Straumur.csproj"
+    ]
+  },
+  "Ekom.Payments.AltaPay": {
+    "path": "PaymentProviders/Ekom.Payments.AltaPay",
+    "version-file": "PaymentProviders/Ekom.Payments.AltaPay/Ekom.Payments.AltaPay.csproj",
+    "projects": [
+      "PaymentProviders/Ekom.Payments.AltaPay/Ekom.Payments.AltaPay.csproj"
+    ]
+  },
+  "Ekom.Payments.SiminnPay": {
+    "path": "PaymentProviders/Ekom.Payments.SiminnPay",
+    "version-file": "PaymentProviders/Ekom.Payments.SiminnPay/Ekom.Payments.SiminnPay.csproj",
+    "projects": [
+      "PaymentProviders/Ekom.Payments.SiminnPay/Ekom.Payments.SiminnPay.csproj"
+    ]
+  },
+  "Ekom.Payments.PayTrail": {
+    "path": "PaymentProviders/Ekom.Payments.PayTrail",
+    "version-file": "PaymentProviders/Ekom.Payments.PayTrail/Ekom.Payments.PayTrail.csproj",
+    "projects": [
+      "PaymentProviders/Ekom.Payments.PayTrail/Ekom.Payments.PayTrail.csproj"
+    ]
+  },
+  "Ekom.Payments.TeyaConsumerloans": {
+    "path": "PaymentProviders/Ekom.Payments.TeyaConsumerloans",
+    "version-file": "PaymentProviders/Ekom.Payments.TeyaConsumerloans/Ekom.Payments.TeyaConsumerloans.csproj",
+    "projects": [
+      "PaymentProviders/Ekom.Payments.TeyaConsumerloans/Ekom.Payments.TeyaConsumerloans.csproj"
+    ]
+  }
+}
