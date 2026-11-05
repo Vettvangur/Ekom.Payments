@@ -5,6 +5,11 @@ on:
     branches: ["main"]
   workflow_dispatch: {}
 
+# Release runs share component branches and one manifest; never run concurrently.
+concurrency:
+  group: release-please-main
+  cancel-in-progress: false
+
 permissions:
   contents: write
   issues: write
