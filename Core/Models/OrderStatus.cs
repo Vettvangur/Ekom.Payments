@@ -1,5 +1,6 @@
 using LinqToDB.Mapping;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Ekom.Payments;
 
@@ -78,8 +79,39 @@ public class OrderStatus
         }
         set
         {
-            EkomPaymentSettingsData = JsonConvert.SerializeObject(value);
+            EkomPaymentSettingsData = SerializeWithoutCardData(value);
         }
+    }
+
+    /// <summary>
+    /// Card details are only used while the payment request is made, they are never stored with the order.
+    /// </summary>
+    static readonly string[] _cardDataProperties =
+    {
+        nameof(PaymentSettings.CardNumber),
+        nameof(PaymentSettings.CardCVV),
+        nameof(PaymentSettings.CardExpirationMonth),
+        nameof(PaymentSettings.CardExpirationYear),
+    };
+
+    static string SerializeWithoutCardData(PaymentSettings? paymentSettings)
+    {
+        if (paymentSettings == null)
+        {
+            return JsonConvert.SerializeObject(paymentSettings);
+        }
+
+        var json = JObject.FromObject(paymentSettings);
+
+        foreach (var property in json.Properties().ToList())
+        {
+            if (_cardDataProperties.Contains(property.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                property.Remove();
+            }
+        }
+
+        return json.ToString(Formatting.None);
     }
 
     /// <summary>

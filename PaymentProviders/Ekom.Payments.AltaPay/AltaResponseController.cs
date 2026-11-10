@@ -1,5 +1,6 @@
 using Ekom.Payments.AltaPay.Model;
 using Ekom.Payments.Helpers;
+using Ekom.Payments.Providers;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
@@ -99,7 +100,7 @@ public class AltaResponseController : ControllerBase
 
             _logger.LogInformation("Alta Payment Response - OrderID: " + orderId);
 
-            OrderStatus? order = await _orderService.GetByCustomAsync(orderId.ToString());
+            OrderStatus? order = await GetAltaPayOrderAsync(orderId);
 
             if (order == null)
             {
@@ -119,6 +120,18 @@ public class AltaResponseController : ControllerBase
 
             var altaSettings = JsonConvert.DeserializeObject<AltaSettings>(order.EkomPaymentProviderData);
 
+            if (altaSettings == null || string.IsNullOrWhiteSpace(altaSettings.Terminal))
+            {
+                _logger.LogError("Alta Payment Response - Order {OrderId} has no AltaPay settings, unable to verify", orderId);
+
+                await Events.OnErrorAsync(this, new ErrorEventArgs
+                {
+                    OrderStatus = order,
+                });
+
+                return StatusCode(500);
+            }
+
             var checksumValid = true;
             if (!string.IsNullOrEmpty(altaSettings.CustomerInformationSharedSecret))
             {
@@ -137,7 +150,7 @@ public class AltaResponseController : ControllerBase
                     Secret = altaSettings.CustomerInformationSharedSecret
                 });
 
-                checksumValid = response.Checksum == calculatedChecksum;
+                checksumValid = PaymentRowGuard.SignatureEquals(response.Checksum, calculatedChecksum);
 
                 _logger.LogInformation($"Alta Payment Response - Checksum is {(checksumValid ? "valid" : "invalid")} CustomData {order.CustomData}");
             }
@@ -158,7 +171,7 @@ public class AltaResponseController : ControllerBase
 
             _logger.LogInformation("Alta Payment Response - DigitalSignatureResponse Verified");
 
-            if (!order.Paid)
+            if (await PaymentRowGuard.TryMarkPaidAsync(_dbFac, order))
             {
                 try
                 {
@@ -177,13 +190,6 @@ public class AltaResponseController : ControllerBase
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Alta Payment Response - Error saving payment data");
-                }
-
-                order.Paid = true;
-
-                using (var db = _dbFac.GetDatabase())
-                {
-                    await db.UpdateAsync(order);
                 }
 
                 await Events.OnSuccessAsync(this, new SuccessEventArgs
@@ -220,6 +226,47 @@ public class AltaResponseController : ControllerBase
             }
 
             throw;
+        }
+    }
+
+    /// <summary>
+    /// AltaPay identifies the payment by the shop order id, which other payment attempts for the same order share. <br />
+    /// Only payments created by this provider are considered.
+    /// </summary>
+    async Task<OrderStatus?> GetAltaPayOrderAsync(Guid shopOrderId)
+    {
+        var customData = shopOrderId.ToString();
+
+        await using var db = _dbFac.GetDatabase();
+        var orders = await db.OrderStatus
+            .Where(x => x.CustomData == customData)
+            .OrderBy(x => x.ReferenceId)
+            .ToListAsync();
+
+        return orders.FirstOrDefault(IsAltaPayOrder);
+    }
+
+    static bool IsAltaPayOrder(OrderStatus order)
+    {
+        if (!PaymentRowGuard.TryGetProvider(order, out var provider))
+        {
+            return false;
+        }
+
+        if (provider != null)
+        {
+            return provider.Equals(Payment._ppNodeName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Payments created before the provider was recorded on the payment
+        try
+        {
+            var altaSettings = JsonConvert.DeserializeObject<AltaSettings>(order.EkomPaymentProviderData!);
+            return !string.IsNullOrWhiteSpace(altaSettings?.Terminal);
+        }
+        catch (Newtonsoft.Json.JsonException)
+        {
+            return false;
         }
     }
 

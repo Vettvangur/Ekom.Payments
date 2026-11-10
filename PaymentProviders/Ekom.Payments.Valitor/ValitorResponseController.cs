@@ -1,4 +1,5 @@
 using Ekom.Payments.Helpers;
+using Ekom.Payments.Providers;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
@@ -73,16 +74,42 @@ public class ValitorResponseController : ControllerBase
 
                     return NotFound();
                 }
+
+                if (order.UniqueId != orderId
+                || !PaymentRowGuard.BelongsTo(order, Payment._ppNodeName))
+                {
+                    _logger.LogWarning("Valitor Payment Response - Order {OrderId} is not a Valitor payment", orderId);
+
+                    return NotFound();
+                }
+
                 var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
                 var valitorSettings = JsonConvert.DeserializeObject<ValitorSettings>(order.EkomPaymentProviderData);
 
+                if (paymentSettings == null
+                || valitorSettings == null
+                || string.IsNullOrWhiteSpace(valitorSettings.VerificationCode)
+                || string.IsNullOrWhiteSpace(valitorSettings.MerchantId))
+                {
+                    _logger.LogError(
+                        "Valitor Payment Response - Order {OrderId} has no Valitor verification code or merchant id, unable to verify",
+                        orderId);
+
+                    await Events.OnErrorAsync(this, new ErrorEventArgs
+                    {
+                        OrderStatus = order,
+                    });
+
+                    return StatusCode(500);
+                }
+
                 string digitalSignature = CryptoHelpers.GetSHA256HexStringSum(valitorSettings.VerificationCode + valitorResp.ReferenceNumber);
 
-                if (valitorResp.DigitalSignatureResponse.Equals(digitalSignature, StringComparison.InvariantCultureIgnoreCase))
+                if (PaymentRowGuard.SignatureEquals(valitorResp.DigitalSignatureResponse, digitalSignature))
                 {
                     _logger.LogInformation("Valitor Payment Response - DigitalSignatureResponse Verified");
 
-                    if (!order.Paid)
+                    if (await PaymentRowGuard.TryMarkPaidAsync(_dbFac, order))
                     {
                         try
                         {
@@ -101,13 +128,6 @@ public class ValitorResponseController : ControllerBase
                         catch (Exception ex)
                         {
                             _logger.LogError(ex, "Valitor Payment Response - Error saving payment data");
-                        }
-
-                        order.Paid = true;
-
-                        using (var db = _dbFac.GetDatabase())
-                        {
-                            await db.UpdateAsync(order);
                         }
 
                         await Events.OnSuccessAsync(this, new SuccessEventArgs

@@ -1,4 +1,5 @@
 using Ekom.Payments.Helpers;
+using Ekom.Payments.Providers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -81,7 +82,7 @@ class Payment : IPaymentProvider
             var orderStatus = await _orderService.InsertAsync(
                 total,
                 paymentSettings,
-                netgiroSettings,
+                PaymentRowGuard.Stamp(netgiroSettings, _ppNodeName),
                 paymentSettings.OrderUniqueId.ToString(),
                 _httpCtx
             ).ConfigureAwait(false);
@@ -117,12 +118,7 @@ class Payment : IPaymentProvider
                 formValues.Add($"Items[{lineNumber}].Amount", FormatPrice(order.GrandTotal));
             }
 
-            var sig = CryptoHelpers.GetSHA256HexStringSum(
-                CombineSignature(
-                    netgiroSettings.Secret,
-                    orderStatus.UniqueId.ToString(),
-                    FormatPrice(total),
-                    netgiroSettings.ApplicationId.ToString()));
+            var sig = RequestSignature(netgiroSettings, orderStatus.UniqueId, total);
             formValues.Add("Signature", sig);
             formValues.Add("ReferenceNumber", orderStatus.UniqueId.ToString());
 
@@ -152,7 +148,19 @@ class Payment : IPaymentProvider
         Array.ForEach(args, x => sb.Append(x));
         return sb.ToString();
     }
-    private string FormatPrice(decimal price)
+
+    /// <summary>
+    /// Signature of the payment request, SHA256(SecretKey + ReferenceNumber + TotalAmount + ApplicationId)
+    /// </summary>
+    internal static string RequestSignature(NetgiroSettings netgiroSettings, Guid referenceNumber, decimal total)
+        => CryptoHelpers.GetSHA256HexStringSum(
+            CombineSignature(
+                netgiroSettings.Secret,
+                referenceNumber.ToString(),
+                FormatPrice(total),
+                netgiroSettings.ApplicationId.ToString()));
+
+    internal static string FormatPrice(decimal price)
     {
         var rounded = Math.Round(price, 0, MidpointRounding.AwayFromZero);
         return rounded.ToString("0", CultureInfo.InvariantCulture);

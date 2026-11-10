@@ -55,6 +55,14 @@ public class ValitorResponseHelper
         string verificationcode = null)
     {
         verificationcode ??= _configuration["Ekom:Payments:Valitor:VerificationCode"];
+
+        if (string.IsNullOrWhiteSpace(verificationcode)
+        || string.IsNullOrEmpty(valitorResp?.DigitalSignatureResponse))
+        {
+            _logger.LogError("Valitor Payment Response - Missing verification code or signature, unable to verify");
+            return null;
+        }
+
         string DigitalSignature = CryptoHelpers.GetMD5StringSum(verificationcode + valitorResp.ReferenceNumber);
 
         if (valitorResp.DigitalSignatureResponse.Equals(DigitalSignature, StringComparison.InvariantCultureIgnoreCase))

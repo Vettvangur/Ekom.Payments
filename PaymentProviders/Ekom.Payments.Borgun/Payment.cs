@@ -1,4 +1,5 @@
 using Ekom.Payments.Helpers;
+using Ekom.Payments.Providers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -54,6 +55,14 @@ class Payment : IPaymentProvider
         var rounded = Math.Round(price, 0, MidpointRounding.AwayFromZero);
         return $"{rounded},00";
     }
+
+    /// <summary>
+    /// The order id sent to Borgun for a payment, Borgun returns it with the payment confirmation.
+    /// </summary>
+    internal static string GetBorgunOrderId(PaymentSettings paymentSettings, Guid uniqueId)
+        => string.IsNullOrEmpty(paymentSettings.OrderNumber)
+            ? uniqueId.ToString().Split('-').Last()
+            : paymentSettings.OrderNumber;
 
     /// <summary>
     /// Initiate a payment request with Borgun.
@@ -152,13 +161,13 @@ class Payment : IPaymentProvider
             var orderStatus = await _orderService.InsertAsync(
                 total,
                 paymentSettings,
-                borgunSettings,
+                PaymentRowGuard.Stamp(borgunSettings, _ppNodeName),
                 paymentSettings.OrderUniqueId.ToString(),
                 _httpCtx
             ).ConfigureAwait(false);
 
             // Borgun only supports specific types of order id's
-            var borgunOrderId = string.IsNullOrEmpty(paymentSettings.OrderNumber) ? orderStatus.UniqueId.ToString().Split('-').Last() : paymentSettings.OrderNumber;
+            var borgunOrderId = GetBorgunOrderId(paymentSettings, orderStatus.UniqueId);
 
             ArgumentNullException.ThrowIfNull(borgunSettings.SecretCode);
 
