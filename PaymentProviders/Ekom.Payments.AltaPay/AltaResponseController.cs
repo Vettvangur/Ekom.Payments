@@ -132,28 +132,41 @@ public class AltaResponseController : ControllerBase
                 return StatusCode(500);
             }
 
-            var checksumValid = true;
-            if (!string.IsNullOrEmpty(altaSettings.CustomerInformationSharedSecret))
+            // The checksum is the only proof that the response comes from AltaPay,
+            // it requires a shared secret configured on the AltaPay terminal and on the payment provider
+            if (string.IsNullOrWhiteSpace(altaSettings.CustomerInformationSharedSecret))
             {
-                _logger.LogInformation("Alta Payment Response - Validationg checksum");
+                _logger.LogError(
+                    "Alta Payment Response - Order {OrderId} has no CustomerInformationSharedSecret, unable to verify. "
+                    + "Configure the shared secret on the AltaPay terminal and on the payment provider.",
+                    orderId);
 
-                if (string.IsNullOrEmpty(response.Checksum))
+                await Events.OnErrorAsync(this, new ErrorEventArgs
                 {
-                    _logger.LogWarning("Alta Payment Response - Expected incoming checksum not given.");
-                }
-
-                var calculatedChecksum = AltaResponseHelper.CalculateChecksum(new ChecksumCalculationRequest
-                {
-                    Amount = order.Amount.ToString("F2", CultureInfo.InvariantCulture),
-                    Currency = transaction.MerchantCurrency.ToString(),
-                    OrderId = orderId.ToString(),
-                    Secret = altaSettings.CustomerInformationSharedSecret
+                    OrderStatus = order,
                 });
 
-                checksumValid = PaymentRowGuard.SignatureEquals(response.Checksum, calculatedChecksum);
-
-                _logger.LogInformation($"Alta Payment Response - Checksum is {(checksumValid ? "valid" : "invalid")} CustomData {order.CustomData}");
+                return StatusCode(500);
             }
+
+            _logger.LogInformation("Alta Payment Response - Validationg checksum");
+
+            if (string.IsNullOrEmpty(response.Checksum))
+            {
+                _logger.LogWarning("Alta Payment Response - Expected incoming checksum not given.");
+            }
+
+            var calculatedChecksum = AltaResponseHelper.CalculateChecksum(new ChecksumCalculationRequest
+            {
+                Amount = order.Amount.ToString("F2", CultureInfo.InvariantCulture),
+                Currency = transaction.MerchantCurrency.ToString(),
+                OrderId = orderId.ToString(),
+                Secret = altaSettings.CustomerInformationSharedSecret
+            });
+
+            var checksumValid = PaymentRowGuard.SignatureEquals(response.Checksum, calculatedChecksum);
+
+            _logger.LogInformation($"Alta Payment Response - Checksum is {(checksumValid ? "valid" : "invalid")} CustomData {order.CustomData}");
 
             if (!(order.CustomData ?? "").Equals(orderId.ToString(), StringComparison.InvariantCultureIgnoreCase) || !checksumValid)
             {

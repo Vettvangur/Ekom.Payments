@@ -532,6 +532,34 @@ public sealed class CallbackVerificationTests
         Assert.Equal(0, f.Completions);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task AltaPayDoesNotConfirmPaymentsWithoutASharedSecret(string? secret)
+    {
+        await using var f = await Fixture.CreateAsync();
+        var alta = await f.InsertAsync(1990, AltaPaySettings(secret), "altapay");
+
+        // Without a shared secret AltaPay sends no checksum, and one calculated without a secret proves nothing
+        foreach (var checksum in new[] { null, AltaChecksum(f.OrderId, "1990.00", secret: "") })
+        {
+            Assert.IsNotType<RedirectResult>(await f.AltaPay().Post(AltaPayConfirmation(f.OrderId, checksum)));
+        }
+
+        Assert.False((await f.Orders.GetAsync(alta.UniqueId))!.Paid);
+        Assert.Equal(0, f.Completions);
+    }
+
+    [Fact]
+    public async Task AltaPayRejectsMissingChecksum()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var alta = await f.InsertAsync(1990, AltaPaySettings(AltaSecret), "altapay");
+
+        Assert.IsNotType<RedirectResult>(await f.AltaPay().Post(AltaPayConfirmation(f.OrderId, checksum: null)));
+        Assert.False((await f.Orders.GetAsync(alta.UniqueId))!.Paid);
+    }
+
     static AltaSettings AltaPaySettings(string? secret) => new()
     {
         Terminal = "Test Terminal",
