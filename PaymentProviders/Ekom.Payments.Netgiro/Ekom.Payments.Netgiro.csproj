@@ -43,6 +43,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Ekom.Payments.Tests</_Parameter1>
+        </AssemblyAttribute>
+        <Compile Include="..\Shared\PaymentRowGuard.cs" Link="Shared\PaymentRowGuard.cs"/>
         <FrameworkReference Include="Microsoft.AspNetCore.App"/>
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All"/>
     </ItemGroup>

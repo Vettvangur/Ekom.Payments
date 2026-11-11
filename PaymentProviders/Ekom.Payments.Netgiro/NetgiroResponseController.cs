@@ -1,4 +1,5 @@
 using Ekom.Payments.Helpers;
+using Ekom.Payments.Providers;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
@@ -73,6 +74,16 @@ public class NetgiroResponseController : ControllerBase
                 return NotFound();
             }
 
+            if (order.UniqueId != netgiroResponse.ReferenceNumber
+            || !PaymentRowGuard.BelongsTo(order, Payment._ppNodeName))
+            {
+                _logger.LogWarning(
+                    "Netgiro Payment Response - Order {ReferenceNumber} is not a Netgiro payment",
+                    netgiroResponse.ReferenceNumber);
+
+                return NotFound();
+            }
+
             if (order.Paid)
             {
                 _logger.LogInformation("Netgiro Payment Response - Already Paid");
@@ -82,18 +93,41 @@ public class NetgiroResponseController : ControllerBase
             var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
             var netgiroSettings = JsonConvert.DeserializeObject<NetgiroSettings>(order.EkomPaymentProviderData);
 
+            if (paymentSettings == null
+            || netgiroSettings == null
+            || string.IsNullOrWhiteSpace(netgiroSettings.Secret)
+            || netgiroSettings.ApplicationId == Guid.Empty)
+            {
+                _logger.LogError(
+                    "Netgiro Payment Response - Order {ReferenceNumber} has no Netgiro secret or application id, unable to verify",
+                    netgiroResponse.ReferenceNumber);
+
+                await Events.OnErrorAsync(this, new ErrorEventArgs
+                {
+                    OrderStatus = order,
+                });
+
+                return BadRequest();
+            }
+
             var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
 
-            var sig = CryptoHelpers.GetSHA256HexStringSum(
-                Payment.CombineSignature(
-                    netgiroSettings.Secret,
-                    netgiroResponse.ReferenceNumber.ToString(),
-                    netgiroResponse.ConfirmationCode,
-                    netgiroResponse.InvoiceNumber));
-
-            if (sig.Equals(netgiroResponse.Signature, StringComparison.InvariantCultureIgnoreCase))
+            if (IsVerified(netgiroResponse, order, netgiroSettings, out var rejection))
             {
                 _logger.LogInformation("Netgiro Payment Response Hit - PaymentSuccessful");
+
+                if (string.IsNullOrEmpty(netgiroResponse.NetgiroSignature))
+                {
+                    _logger.LogWarning(
+                        "Netgiro Payment Response - {ReferenceNumber} verified without NetgiroSignature, amount and status were not part of the signature",
+                        netgiroResponse.ReferenceNumber);
+                }
+
+                if (!await PaymentRowGuard.TryMarkPaidAsync(_dbFac, order))
+                {
+                    _logger.LogInformation("Netgiro Payment Response - Already Paid");
+                    return Ok();
+                }
 
                 try
                 {
@@ -118,13 +152,6 @@ public class NetgiroResponseController : ControllerBase
                 }
 #pragma warning restore CA1031 // Do not catch general exception types
 
-                order.Paid = true;
-
-                using (var db = _dbFac.GetDatabase())
-                {
-                    await db.UpdateAsync(order);
-                }
-
                 await Events.OnSuccessAsync(this, new SuccessEventArgs
                 {
                     OrderStatus = order,
@@ -140,8 +167,9 @@ public class NetgiroResponseController : ControllerBase
                     OrderStatus = order,
                 });
                 _logger.LogError(
-                    "Netgiro Payment Response - Failed verification for {ReferenceNumber}",
-                    netgiroResponse.ReferenceNumber
+                    "Netgiro Payment Response - Failed verification for {ReferenceNumber}: {Reason}",
+                    netgiroResponse.ReferenceNumber,
+                    rejection
                 );
 
                 return BadRequest();
@@ -169,4 +197,96 @@ public class NetgiroResponseController : ControllerBase
             throw;
         }
     }
+
+    /// <summary>
+    /// Verifies a callback against the payment row it references. <br />
+    /// https://netgiro.github.io/docs/iframe-and-http-post/http-post-request/ <br />
+    /// NetgiroSignature = SHA256(SecretKey + ReferenceNumber + TransactionId + InvoiceNumber + TotalAmount + Status) <br />
+    /// Signature = SHA256(SecretKey + ReferenceNumber + ConfirmationCode + InvoiceNumber), used when NetgiroSignature is not sent.
+    /// </summary>
+    internal static bool IsVerified(
+        Response netgiroResponse,
+        OrderStatus order,
+        NetgiroSettings netgiroSettings,
+        out string rejection)
+    {
+        var referenceNumber = order.UniqueId.ToString();
+        string received;
+        string expected;
+
+        if (!IsNumeric(netgiroResponse.InvoiceNumber))
+        {
+            rejection = "InvoiceNumber missing or not numeric";
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(netgiroResponse.NetgiroSignature))
+        {
+            if (string.IsNullOrEmpty(netgiroResponse.TransactionId))
+            {
+                rejection = "TransactionId missing";
+                return false;
+            }
+
+            // 1 - unconfirmed, the payment is confirmed by our reply to this callback. 2 - confirmed. 5 - canceled
+            if (netgiroResponse.Status != "1" && netgiroResponse.Status != "2")
+            {
+                rejection = "Status is not unconfirmed or confirmed";
+                return false;
+            }
+
+            if (!IsNumeric(netgiroResponse.TotalAmount)
+            || !decimal.TryParse(netgiroResponse.TotalAmount, NumberStyles.None, CultureInfo.InvariantCulture, out var totalAmount)
+            || totalAmount != decimal.Parse(Payment.FormatPrice(order.Amount), CultureInfo.InvariantCulture))
+            {
+                rejection = "TotalAmount does not match the order";
+                return false;
+            }
+
+            received = netgiroResponse.NetgiroSignature;
+            expected = CryptoHelpers.GetSHA256HexStringSum(
+                Payment.CombineSignature(
+                    netgiroSettings.Secret,
+                    referenceNumber,
+                    netgiroResponse.TransactionId,
+                    netgiroResponse.InvoiceNumber,
+                    netgiroResponse.TotalAmount,
+                    netgiroResponse.Status));
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(netgiroResponse.ConfirmationCode))
+            {
+                rejection = "ConfirmationCode missing";
+                return false;
+            }
+
+            received = netgiroResponse.Signature;
+            expected = CryptoHelpers.GetSHA256HexStringSum(
+                Payment.CombineSignature(
+                    netgiroSettings.Secret,
+                    referenceNumber,
+                    netgiroResponse.ConfirmationCode,
+                    netgiroResponse.InvoiceNumber));
+        }
+
+        if (!PaymentRowGuard.SignatureEquals(received, expected))
+        {
+            rejection = "Signature mismatch";
+            return false;
+        }
+
+        // The signature we send with the payment request is not a payment confirmation
+        if (PaymentRowGuard.SignatureEquals(received, Payment.RequestSignature(netgiroSettings, order.UniqueId, order.Amount)))
+        {
+            rejection = "Signature is the payment request signature";
+            return false;
+        }
+
+        rejection = string.Empty;
+        return true;
+    }
+
+    static bool IsNumeric(string? value)
+        => !string.IsNullOrEmpty(value) && value.All(x => x is >= '0' and <= '9');
 }

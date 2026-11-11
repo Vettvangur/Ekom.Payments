@@ -1,4 +1,5 @@
 using Ekom.Payments.Helpers;
+using Ekom.Payments.Providers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -99,7 +100,7 @@ public class Payment : IPaymentProvider
             var orderStatus = await _orderService.InsertAsync(
                 total,
                 paymentSettings,
-                valitorSettings,
+                PaymentRowGuard.Stamp(valitorSettings, _ppNodeName),
                 paymentSettings.OrderUniqueId.ToString(),
                 _httpCtx
             ).ConfigureAwait(false);

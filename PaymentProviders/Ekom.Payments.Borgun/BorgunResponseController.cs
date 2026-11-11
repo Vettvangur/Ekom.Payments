@@ -1,4 +1,5 @@
 using Ekom.Payments.Helpers;
+using Ekom.Payments.Providers;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
@@ -74,6 +75,14 @@ public class BorgunResponseController : ControllerBase
                 return NotFound();
             }
 
+            if (order.UniqueId != orderId
+            || !PaymentRowGuard.BelongsTo(order, Payment._ppNodeName))
+            {
+                _logger.LogWarning("Borgun Payment Response - Order {OrderId} is not a Borgun payment", orderId);
+
+                return NotFound();
+            }
+
             if (order.Paid)
             {
                 _logger.LogInformation("Borgun Payment Response - Already Paid");
@@ -87,7 +96,38 @@ public class BorgunResponseController : ControllerBase
             var borgunSettings = JsonConvert.DeserializeObject<BorgunSettings>(order.EkomPaymentProviderData);
             
             ArgumentNullException.ThrowIfNull(borgunSettings);
-            
+
+            if (string.IsNullOrWhiteSpace(borgunSettings.SecretCode)
+            || string.IsNullOrWhiteSpace(borgunSettings.MerchantId))
+            {
+                _logger.LogError(
+                    "Borgun Payment Response - Order {OrderId} has no Borgun secret code or merchant id, unable to verify",
+                    orderId);
+
+                await Events.OnErrorAsync(this, new ErrorEventArgs
+                {
+                    OrderStatus = order,
+                });
+
+                return BadRequest();
+            }
+
+            // Borgun returns the order id we sent with the payment request, the hash is only valid for that order
+            var borgunOrderId = Payment.GetBorgunOrderId(paymentSettings, order.UniqueId);
+            if (!string.Equals(borgunResponse.OrderId, borgunOrderId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogError(
+                    "Borgun Payment Response - Order id does not match payment {OrderId}",
+                    orderId);
+
+                await Events.OnErrorAsync(this, new ErrorEventArgs
+                {
+                    OrderStatus = order,
+                });
+
+                return BadRequest();
+            }
+
             var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
 
             var orderAmount = Payment.FormatPrice(order.Amount, borgunSettings);
@@ -100,9 +140,15 @@ public class BorgunResponseController : ControllerBase
                 orderId,
                 orderAmount);
 
-            if (string.Compare(borgunResponse.OrderHash, orderhashcheck, StringComparison.OrdinalIgnoreCase) == 0)
+            if (PaymentRowGuard.SignatureEquals(borgunResponse.OrderHash, orderhashcheck))
             {
                 _logger.LogInformation("Borgun Payment Response - OrderHash Validation Success");
+
+                if (!await PaymentRowGuard.TryMarkPaidAsync(_dbFac, order))
+                {
+                    _logger.LogInformation("Borgun Payment Response - Already Paid");
+                    return Ok();
+                }
 
                 try
                 {
@@ -128,13 +174,6 @@ public class BorgunResponseController : ControllerBase
                 }
 #pragma warning restore CA1031 // Do not catch general exception types
 
-                order.Paid = true;
-
-                await using (var db = _dbFac.GetDatabase())
-                {
-                    await db.UpdateAsync(order);
-                }
-
                 await Events.OnSuccessAsync(this, new SuccessEventArgs
                 {
                     OrderStatus = order,
@@ -146,9 +185,8 @@ public class BorgunResponseController : ControllerBase
             else
             {
                 _logger.LogError(
-                    "Borgun Payment Response - Failed hash verification: {ReceivedOrderHash} {ComputedOrderhash}",
-                    borgunResponse.OrderHash,
-                    orderhashcheck
+                    "Borgun Payment Response - Failed hash verification for {OrderId}",
+                    orderId
                 );
                 await Events.OnErrorAsync(this, new ErrorEventArgs
                 {

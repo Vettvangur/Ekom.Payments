@@ -13,11 +13,15 @@ public class NetgiroResponseModelBinder : IModelBinder
         {
             try
             {
-                var jsonResponse = await request.ReadFromJsonAsync<Response>(
+                using var json = await JsonDocument.ParseAsync(
+                    request.Body,
                     cancellationToken: request.HttpContext.RequestAborted);
-                if (jsonResponse != null)
+
+                if (json.RootElement.ValueKind == JsonValueKind.Object)
                 {
-                    bindingContext.Result = ModelBindingResult.Success(jsonResponse);
+                    var root = json.RootElement;
+                    bindingContext.Result = ModelBindingResult.Success(
+                        CreateResponse(bindingContext, key => GetJsonValue(root, key)));
                     return;
                 }
 
@@ -49,12 +53,21 @@ public class NetgiroResponseModelBinder : IModelBinder
                 : null;
         }
 
-        var referenceNumberValue = GetValue(nameof(Response.ReferenceNumber));
+        bindingContext.Result = ModelBindingResult.Success(CreateResponse(bindingContext, GetValue));
+    }
+
+    static Response CreateResponse(ModelBindingContext bindingContext, Func<string, string?> getValue)
+    {
+        var referenceNumberValue = getValue(nameof(Response.ReferenceNumber));
         var response = new Response
         {
-            Signature = GetValue(nameof(Response.Signature)) ?? string.Empty,
-            ConfirmationCode = GetValue(nameof(Response.ConfirmationCode)) ?? string.Empty,
-            InvoiceNumber = GetValue(nameof(Response.InvoiceNumber)) ?? string.Empty,
+            Signature = getValue(nameof(Response.Signature)) ?? string.Empty,
+            ConfirmationCode = getValue(nameof(Response.ConfirmationCode)) ?? string.Empty,
+            InvoiceNumber = getValue(nameof(Response.InvoiceNumber)) ?? string.Empty,
+            TransactionId = getValue(nameof(Response.TransactionId)),
+            TotalAmount = getValue(nameof(Response.TotalAmount)),
+            Status = getValue(nameof(Response.Status)),
+            NetgiroSignature = getValue(nameof(Response.NetgiroSignature)),
         };
 
         if (Guid.TryParse(referenceNumberValue, out var referenceNumber))
@@ -68,6 +81,29 @@ public class NetgiroResponseModelBinder : IModelBinder
                 "The ReferenceNumber field must be a valid GUID.");
         }
 
-        bindingContext.Result = ModelBindingResult.Success(response);
+        return response;
+    }
+
+    /// <summary>
+    /// Property names are matched ignoring case, numeric values are read as they were written.
+    /// </summary>
+    static string? GetJsonValue(JsonElement root, string key)
+    {
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!property.Name.Equals(key, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return property.Value.ValueKind switch
+            {
+                JsonValueKind.String => property.Value.GetString(),
+                JsonValueKind.Number => property.Value.GetRawText(),
+                _ => null,
+            };
+        }
+
+        return null;
     }
 }

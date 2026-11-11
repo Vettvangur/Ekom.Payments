@@ -86,7 +86,7 @@ public class Payment : IPaymentProvider
             var orderStatus = await _orderService.InsertAsync(
                 total,
                 paymentSettings,
-                altaSettings,
+                Ekom.Payments.Providers.PaymentRowGuard.Stamp(altaSettings, _ppNodeName),
                 paymentSettings.OrderUniqueId.ToString(),
                 _httpCtx
             ).ConfigureAwait(false);

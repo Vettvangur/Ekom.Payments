@@ -1,4 +1,5 @@
 using Ekom.Payments.Helpers;
+using Ekom.Payments.Providers;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
@@ -94,8 +95,32 @@ public class StraumurResponseController : ControllerBase
                     return NotFound();
                 }
 
+                if (order.UniqueId != orderId
+                || !PaymentRowGuard.BelongsTo(order, Payment._ppNodeName))
+                {
+                    _logger.LogWarning("Straumur Payment Response - Order {OrderId} is not a Straumur payment", orderId);
+
+                    return NotFound();
+                }
+
                 var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
                 var straumurSettings = JsonConvert.DeserializeObject<StraumurSettings>(order.EkomPaymentProviderData);
+
+                if (paymentSettings == null
+                || straumurSettings == null
+                || string.IsNullOrWhiteSpace(straumurSettings.HmacKey))
+                {
+                    _logger.LogError(
+                        "Straumur Payment Response - Order {OrderId} has no Straumur HMAC key, unable to verify",
+                        orderId);
+
+                    await Events.OnErrorAsync(this, new ErrorEventArgs
+                    {
+                        OrderStatus = order,
+                    });
+
+                    return StatusCode(500);
+                }
 
                 bool isRecurringPayment = straumurSettings.RecurringProcessingModel == RecurringProccessingModel.Subscription || straumurSettings.RecurringProcessingModel == RecurringProccessingModel.CardOnFile;
 
@@ -108,11 +133,11 @@ public class StraumurResponseController : ControllerBase
                 var hmacKey = straumurSettings.HmacKey;
                 var calculatedSignature = StraumurResponseHelper.GetHmacSignature(hmacKey, straumurResp);
 
-                if (straumurResp.HmacSignature == calculatedSignature)
+                if (PaymentRowGuard.SignatureEquals(straumurResp.HmacSignature, calculatedSignature, ignoreCase: false))
                 {
                     _logger.LogInformation("Straumur Payment Response - DigitalSignatureResponse Verified");
 
-                    if (!order.Paid)
+                    if (await PaymentRowGuard.TryMarkPaidAsync(_dbFac, order))
                     {
                         try
                         {
@@ -131,13 +156,6 @@ public class StraumurResponseController : ControllerBase
                         catch (Exception ex)
                         {
                             _logger.LogError(ex, "Straumur Payment Response - Error saving payment data");
-                        }
-
-                        order.Paid = true;
-
-                        using (var db = _dbFac.GetDatabase())
-                        {
-                            await db.UpdateAsync(order);
                         }
 
                         await Events.OnSuccessAsync(this, new SuccessEventArgs
