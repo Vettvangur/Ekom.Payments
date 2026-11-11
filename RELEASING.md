@@ -9,17 +9,18 @@ workflow, `publish-ekom-payments.yml`. Release groups are defined in
 - `Ekom.Payments` groups Core, AspNetCore, U10, U17, and U18. These five packages
   share `Payments.Version.props` and use tags such as `Ekom.Payments-v0.2.98`.
 - Each of the eight published providers has its own version in its project file,
-  release-please manifest entry, changelog, release PR, and tag. For example,
+  release-please manifest entry, changelog, and tag. For example,
   `Ekom.Payments.Netgiro-v0.2.98` publishes only Netgiro.
+- All pending releases share one release PR, `chore: release main`. It lists every
+  group with unreleased changes and bumps only those groups.
 - ValitorPay and AsynchronousExample remain outside the publishing list.
 
 All groups start at the previously verified NuGet version `0.2.97`. Each group's
 next release is `0.2.98`, independently of the other groups. Release-please keeps
 the existing patch-only `0.2.x` policy. Provider-only commits are excluded from
 the shared group's release history; each provider tracks its own directory.
-A commit changing multiple providers can produce a separate release PR for each.
-The initial migration touches every provider, so it may produce one initial
-release PR per provider; subsequent provider-only changes are isolated.
+A commit changing multiple providers bumps each of them in the same release PR;
+provider-only changes bump only that provider.
 
 Use conventional PR titles, for example `fix(netgiro): handle callback retries`.
 The files changed determine the affected release groups; the title's scope is
@@ -46,8 +47,11 @@ When a provider needs a newer Core API or fix:
    and existing minimum Core requirements.
 
 A provider release does not consume an unreleased Core change from the checkout.
-If Core and provider release PRs are merged together and the new Core dependency
-is not available yet, the provider restore fails; rerun it after Core is available.
+The release PR releases every pending group at once, so a provider change that raises
+`CorePackageVersion` to an unreleased Core version must wait for a later release PR:
+merge the Core change first, merge its release PR, then merge the provider change.
+If a provider is released before its Core dependency is available on NuGet.org, the
+provider restore fails; rerun it after Core is available.
 Consumers can update Core independently where it satisfies their dependencies.
 
 ## One-time cutover
@@ -71,7 +75,8 @@ Consumers can update Core independently where it satisfies their dependencies.
 
 ## Publishing and retries
 
-Merge a component's release PR to trigger its tag and publish only that group.
+Merge the release PR to tag every group it bumps. Each tag starts its own publish
+run for only that group.
 The workflow requires the tag, component version, and manifest to agree. It
 builds on Windows using .NET 8 and .NET 10, verifies package versions and internal
 dependencies, retains package/symbol artifacts, and publishes through NuGet OIDC.
@@ -82,16 +87,17 @@ Branch dispatches without an explicit release tag and unknown components are rej
 are skipped so an interrupted release can resume. Version-line changes require
 updating both the release policy and workflow validation deliberately.
 
-## Merging multiple release PRs
+## The release PR
 
-Release-please runs are serialized and refresh open release PRs even when their
-release notes have not changed. This keeps each branch's shared manifest current
-with versions released by other PRs and avoids overlapping bot writes.
+Release-please keeps a single release PR open on the
+`release-please--branches--main` branch while any group has unreleased changes
+(`separate-pull-requests` is `false` in `release-please-config.json`). Runs are
+serialized and refresh the PR on every push to `main`, also when the release notes
+have not changed.
 
-Merge one release PR at a time, then wait for the `release-please` workflow on
-`main` to finish before merging the next. Adjacent entries in the shared manifest
-can temporarily conflict until that refresh completes. Independent package
-versions and separate provider PRs are preserved.
+Merging it releases all listed groups together; a single group cannot be held back.
+To delay one group's release, leave the release PR open until that group is ready, or
+keep its change out of `main`. Independent package versions and tags are preserved.
 
 To recover a release blocked by a workflow bug, dispatch `publish-payments` using
 `main` as the workflow branch and set `release_tag` to the existing tag (for
