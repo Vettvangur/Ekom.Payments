@@ -7,7 +7,7 @@
 
         <!-- Package properties -->
         <PackageId>Ekom.Payments.Straumur</PackageId>
-        <Version>0.2.98</Version>
+        <Version>0.2.99</Version>
         <!-- Minimum published Core version used when packaging this provider. -->
         <CorePackageVersion>0.2.97</CorePackageVersion>
         <Title>Ekom Payments Straumur</Title>
