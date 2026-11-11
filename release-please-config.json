@@ -142,6 +142,6 @@
     }
   },
   "bootstrap-sha": "9370e11512b0cb13156defb65ab6f30ddf7ff0d0",
-  "separate-pull-requests": true,
+  "separate-pull-requests": false,
   "always-update": true
 }
