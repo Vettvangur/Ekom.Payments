@@ -1,6 +1,6 @@
 {
   ".": "0.2.99",
-  "PaymentProviders/Ekom.Payments.Valitor": "0.2.98",
+  "PaymentProviders/Ekom.Payments.Valitor": "0.2.99",
   "PaymentProviders/Ekom.Payments.Borgun": "0.2.98",
   "PaymentProviders/Ekom.Payments.Netgiro": "0.2.99",
   "PaymentProviders/Ekom.Payments.Straumur": "0.2.99",
