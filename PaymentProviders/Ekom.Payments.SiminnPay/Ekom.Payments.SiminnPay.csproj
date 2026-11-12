@@ -14,7 +14,7 @@
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
-        <PackageIcon>images\VV_Logo.png</PackageIcon>
+        <PackageIcon>images/Ekom_Logo.png</PackageIcon>
         <Description>Ekom Payments SiminnPay - Vettvangur E-Commerce solution</Description>
         <PackageReleaseNotes/>
         <Copyright>Copyright 2026</Copyright>
@@ -47,7 +47,7 @@
 
     <ItemGroup>
         <!-- Package icon -->
-        <None Include="..\..\VV_Logo.png" Pack="true" PackagePath="images\"/>
+        <None Include="../../Ekom_Logo.png" Pack="true" PackagePath="images/"/>
     </ItemGroup>
 
     <ItemGroup>
