@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0](https://github.com/Vettvangur/Ekom.Payments/compare/Ekom.Payments.AltaPay-v0.2.99...Ekom.Payments.AltaPay-v1.0.0) (2026-11-12)
+
+
+### Features
+
+* **umbraco:** add Umbraco 19 package and Ekom package logo ([ffb8416](https://github.com/Vettvangur/Ekom.Payments/commit/ffb84167707f63ab2ea4d14892cc59d775431a74))
+
+
+### Bug Fixes
+
+* **packaging:** use the Ekom logo as the NuGet package icon ([7f01502](https://github.com/Vettvangur/Ekom.Payments/commit/7f015022c3541e1e17da969ce1863643dcacd2ea))
+
 ## [0.2.99](https://github.com/Vettvangur/Ekom.Payments/compare/Ekom.Payments.AltaPay-v0.2.98...Ekom.Payments.AltaPay-v0.2.99) (2026-11-11)
 
 
