@@ -1,6 +1,8 @@
 using Ekom.Payments.Exceptions;
 using Ekom.Payments.Helpers;
+#if !UMBRACO_19
 using Examine;
+#endif
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -8,6 +10,9 @@ using Newtonsoft.Json;
 using System.Reflection;
 using System.Text;
 using Umbraco.Cms.Core.Models.PublishedContent;
+#if UMBRACO_19
+using Umbraco.Cms.Core.Services.Navigation;
+#endif
 using Umbraco.Cms.Core.Web;
 using Umbraco.Cms.Web.Common;
 using Umbraco.Extensions;
@@ -19,7 +24,11 @@ class UmbracoService : IUmbracoService
 {
     readonly ILogger<UmbracoService> _logger;
     readonly IConfiguration _configuration;
+#if UMBRACO_19
+    readonly IDocumentNavigationQueryService _documentNavigationQueryService;
+#else
     readonly IExamineManager _examineManager;
+#endif
     readonly IUmbracoHelperAccessor _umbracoHelperAccessor;
     readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IUmbracoContextFactory _umbracoContextFactory;
@@ -30,13 +39,21 @@ class UmbracoService : IUmbracoService
         ;
 
     public UmbracoService(
+#if UMBRACO_19
+        IDocumentNavigationQueryService documentNavigationQueryService,
+#else
         IExamineManager examineManager,
+#endif
         IUmbracoHelperAccessor umbracoHelperAccessor,
         IConfiguration configuration,
         ILogger<UmbracoService> logger,
         IHttpContextAccessor httpContextAccessor, IUmbracoContextFactory umbracoContextFactory)
     {
+#if UMBRACO_19
+        _documentNavigationQueryService = documentNavigationQueryService;
+#else
         _examineManager = examineManager;
+#endif
         _umbracoHelperAccessor = umbracoHelperAccessor;
         _configuration = configuration;
         _logger = logger;
@@ -44,7 +61,42 @@ class UmbracoService : IUmbracoService
         _umbracoContextFactory = umbracoContextFactory;
     }
 
-    private ISearchResult? GetProviderContainer()
+#if UMBRACO_19
+    /// <summary>
+    /// Umbraco 19 removed the Examine indexes, so the container is located
+    /// through the document navigation structure and the published cache.
+    /// </summary>
+    private IPublishedContent? GetProviderContainer(UmbracoHelper umbracoHelper)
+    {
+        var alias = PaymentsConfiguration.ContainerDocumentTypeAlias;
+        var keys = new List<Guid>();
+
+        if (_documentNavigationQueryService.TryGetRootKeysOfType(alias, out var rootKeysOfType))
+        {
+            keys.AddRange(rootKeysOfType);
+        }
+
+        if (_documentNavigationQueryService.TryGetRootKeys(out var rootKeys))
+        {
+            foreach (var rootKey in rootKeys)
+            {
+                if (_documentNavigationQueryService.TryGetDescendantsKeysOfType(rootKey, alias, out var descendantKeys))
+                {
+                    keys.AddRange(descendantKeys);
+                }
+            }
+        }
+
+        // The navigation structure includes unpublished nodes, the published cache does not.
+        var container = keys
+            .Select(key => umbracoHelper.Content(key))
+            .FirstOrDefault(content => content != null);
+
+        return container
+            ?? throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider container node : " + alias);
+    }
+#else
+    private IPublishedContent? GetProviderContainer(UmbracoHelper umbracoHelper)
     {
         if (!_examineManager.TryGetIndex(UmbracoIndexes.ExternalIndexName, out var index))
         {
@@ -62,8 +114,9 @@ class UmbracoService : IUmbracoService
             throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider container node : " + PaymentsConfiguration.ContainerDocumentTypeAlias);
         }
 
-        return searchResults.First();
+        return umbracoHelper.Content(searchResults.First().Id);
     }
+#endif
 
     private IPublishedContent GetPPNode(PaymentSettings paymentSettings, string ppNodeName)
     {
@@ -90,14 +143,12 @@ class UmbracoService : IUmbracoService
     /// <param name="ppNodeName">Payment Provider Node Name</param>
     private IPublishedContent GetPPNode(string ppNodeName)
     {
-        var container = GetProviderContainer();
-
         if (!_umbracoHelperAccessor.TryGetUmbracoHelper(out var umbracoHelper))
         {
             throw new NetPaymentException("Could not access the Umbraco helper");
         }
 
-        var ppContainer = umbracoHelper.Content(container.Id);
+        var ppContainer = GetProviderContainer(umbracoHelper);
 
         if (ppContainer == null) throw new PaymentProviderNotFoundException("Unable to find Umbraco payment provider container node: " + ppNodeName);
 

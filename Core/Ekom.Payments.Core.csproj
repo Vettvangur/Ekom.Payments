@@ -15,7 +15,7 @@
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
-        <PackageIcon>images\VV_Logo.png</PackageIcon>
+        <PackageIcon>images/Ekom_Logo.png</PackageIcon>
         <Description>Ekom Payment Providers. Allows configuration of Ekom payment providers within umbraco.</Description>
         <PackageReleaseNotes>Initial</PackageReleaseNotes>
         <Copyright>Copyright 2023</Copyright>
@@ -46,7 +46,7 @@
 
     <ItemGroup>
       <!-- Package icon -->
-      <None Include="..\VV_Logo.png" Pack="true" PackagePath="images\" />
+      <None Include="../Ekom_Logo.png" Pack="true" PackagePath="images/" />
     </ItemGroup>
 
     <ItemGroup>
@@ -67,6 +67,9 @@
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Ekom.Payments.U18</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Ekom.Payments.U19</_Parameter1>
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Ekom.Payments.Borgun</_Parameter1>

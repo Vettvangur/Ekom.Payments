@@ -37,8 +37,8 @@ jobs:
           RELEASE_REF_TYPE: ${{ inputs.release_tag && 'tag' || github.ref_type }}
         run: |
           $ErrorActionPreference = "Stop"
-          if ($env:RELEASE_REF_TYPE -ne "tag" -or $env:RELEASE_TAG -notmatch '^(?<component>Ekom\.Payments(?:\.[A-Za-z]+)?)-v(?<version>0\.2\.\d+)$') {
-            throw "Payments releases must use a configured component-v0.2.x tag."
+          if ($env:RELEASE_REF_TYPE -ne "tag" -or $env:RELEASE_TAG -notmatch '^(?<component>Ekom\.Payments(?:\.[A-Za-z]+)?)-v(?<version>(?:0\.2|1\.0)\.\d+)$') {
+            throw "Payments releases must use a configured component-v1.0.x (or legacy component-v0.2.x) tag."
           }
           $version = $Matches['version']
           $component = $Matches['component']
@@ -62,6 +62,7 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+            11.0.x
 
       - name: Restore, build, and pack packages
         run: |
@@ -102,7 +103,7 @@ jobs:
           if ($env:RELEASE_COMPONENT -ne "Ekom.Payments") {
             [xml] $provider = Get-Content $projects[0] -Raw
             $coreVersion = $provider.SelectSingleNode('/Project/PropertyGroup/CorePackageVersion').InnerText
-            if ($coreVersion -notmatch '^0\.2\.\d+$') { throw "Invalid published Core version." }
+            if ($coreVersion -notmatch '^(?:0\.2|1\.0)\.\d+$') { throw "Invalid published Core version." }
           }
           $packages = @(Get-ChildItem artifacts -Filter *.nupkg -File)
           if ($packages.Count -ne $ids.Count) { throw "Unexpected package count." }
