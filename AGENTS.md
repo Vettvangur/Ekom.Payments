@@ -2,7 +2,7 @@
 
 ## Commands
 - Restore/build from the repo root: `dotnet restore Ekom.Payments.sln` then `dotnet build Ekom.Payments.sln --no-restore`.
-- The solution includes `Umbraco/Ekom.Payments.U17`, which targets `net10.0`; a .NET 10 SDK is required for full-solution builds.
+- The solution includes `Umbraco/Ekom.Payments.U17` and `U18`, which target `net10.0`, and `Umbraco/Ekom.Payments.U19`, which targets `net11.0`; a .NET 11 SDK is required for full-solution builds.
 - To verify one package without building everything: `dotnet build <path-to-csproj> --no-restore` after restore.
 - Run the active test suite: `dotnet test Tests/Ekom.Payments.Tests/Ekom.Payments.Tests.csproj -c Release`.
 - There is no active CI test step; GitHub Actions publishes only the group selected by its component tag in `.github/publish-projects.json` (`Ekom.Payments-v0.2.x` or `Ekom.Payments.<Provider>-v0.2.x`).
@@ -11,7 +11,7 @@
 ## Project layout
 - `Core/` defines the shared payment abstractions (`IPaymentProvider`, `PaymentSettings`, `OrderService`, DB models/helpers).
 - `AspNetCore/` wires DI, table creation, provider discovery, and controller mapping through `EkomPaymentsStartupFilter`.
-- `Umbraco/Ekom.Payments.U10` is the Umbraco 13 adapter on `net8.0`; `Umbraco/Ekom.Payments.U17` is the Umbraco 17 adapter on `net10.0`.
+- `Umbraco/Ekom.Payments.U10` is the Umbraco 13 adapter on `net8.0`; `Umbraco/Ekom.Payments.U17` and `U18` are the Umbraco 17 and 18 adapters on `net10.0`; `Umbraco/Ekom.Payments.U19` is the Umbraco 19 adapter on `net11.0`. U17, U18 and U19 compile the linked sources in `Umbraco/Ekom.Payments.Umbraco.Shared`.
 - `PaymentProviders/Ekom.Payments.*` are provider packages that reference `Core/`; most target `net8.0`, but `Ekom.Payments.ValitorPay` targets `net7.0`.
 - `PaymentProviders/ValitorPay/` is a separate legacy `Vettvangur.ValitorPay` client/test tree; it is not included in `Ekom.Payments.sln`.
 

@@ -6,7 +6,7 @@ workflow, `publish-ekom-payments.yml`. Release groups are defined in
 
 ## Independent versions
 
-- `Ekom.Payments` groups Core, AspNetCore, U10, U17, and U18. These five packages
+- `Ekom.Payments` groups Core, AspNetCore, U10, U17, U18, and U19. These six packages
   share `Payments.Version.props` and use tags such as `Ekom.Payments-v0.2.98`.
 - Each of the eight published providers has its own version in its project file,
   release-please manifest entry, changelog, and tag. For example,
