@@ -7,7 +7,7 @@
 
         <!-- Package properties -->
         <PackageId>Ekom.Payments.Borgun</PackageId>
-        <Version>0.2.99</Version>
+        <Version>1.0.0</Version>
         <!-- Minimum published Core version used when packaging this provider. -->
         <CorePackageVersion>0.2.97</CorePackageVersion>
         <Title>Ekom Payments Borgun</Title>
