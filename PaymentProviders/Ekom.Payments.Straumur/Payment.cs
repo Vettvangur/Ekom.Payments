@@ -1,4 +1,5 @@
 using Ekom.Payments.Helpers;
+using Ekom.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -22,7 +23,7 @@ public class Payment : IPaymentProvider
     readonly ILogger<Payment> _logger;
     readonly PaymentsConfiguration _settings;
     readonly IUmbracoService _uService;
-    readonly IOrderService _orderService;
+    readonly IOrderPayments _payments;
     readonly HttpContext _httpCtx;
     readonly IHttpClientFactory _httpClientFactory;
     readonly IConfiguration _config;
@@ -34,7 +35,7 @@ public class Payment : IPaymentProvider
         ILogger<Payment> logger,
         PaymentsConfiguration settings,
         IUmbracoService uService,
-        IOrderService orderService,
+        IOrderPayments payments,
         IHttpContextAccessor httpContext,
         IHttpClientFactory httpClientFactory,
         IConfiguration config)
@@ -42,7 +43,7 @@ public class Payment : IPaymentProvider
         _logger = logger;
         _settings = settings;
         _uService = uService;
-        _orderService = orderService;
+        _payments = payments;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
         _httpClientFactory = httpClientFactory;
         _config = config;
@@ -64,7 +65,8 @@ public class Payment : IPaymentProvider
 
         try
         {
-            _logger.LogInformation("Straumur Payment Request - Start");
+            _logger.LogInformation("Straumur Payment Request - Start. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
 
             var straumurSettings = paymentSettings.CustomSettings.ContainsKey(typeof(StraumurSettings))
                 ? paymentSettings.CustomSettings[typeof(StraumurSettings)] as StraumurSettings
@@ -95,17 +97,17 @@ public class Payment : IPaymentProvider
                 ? TruncateToMilliseconds(DateTime.UtcNow.AddMinutes(checkoutExpiresInMinutes))
                 : (DateTime?)null;
 
-            // Persist in database and retrieve unique order id
-            var orderStatus = await _orderService.InsertAsync(
-                total,
+            // Store the payment on the Ekom order. Straumur echoes the payment id back as the merchant reference.
+            var payment = await _payments.CreateAsync(
                 paymentSettings,
-                Ekom.Payments.Providers.PaymentRowGuard.Stamp(straumurSettings, _ppNodeName),
-                paymentSettings.OrderUniqueId.ToString(),
-                _httpCtx
-            ).ConfigureAwait(false);    
+                _ppNodeName,
+                total,
+                straumurSettings,
+                httpContext: _httpCtx
+            ).ConfigureAwait(false);
 
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
+            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + payment.PaymentId);
 
             var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
             var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
@@ -125,7 +127,7 @@ public class Payment : IPaymentProvider
                 items.Add(item);
             }
 
-            var reference = orderStatus.UniqueId.ToString();
+            var reference = payment.PaymentId.ToString();
 
             if (straumurSettings.AddOrderToReference == "true")
             {
@@ -190,7 +192,8 @@ public class Payment : IPaymentProvider
                 }
             }
 
-            _logger.LogInformation($"Straumur Payment Request - Amount: {total} OrderId: {orderStatus.UniqueId}");
+            _logger.LogInformation("Straumur Payment Request - " + PaymentLog.Template + " Amount: {Total}",
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, total);
 
             var httpClient = _httpClientFactory.CreateClient();
 
@@ -220,11 +223,8 @@ public class Payment : IPaymentProvider
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Straumur Payment Request - Payment Request Failed. OrderId: " + paymentSettings.OrderUniqueId + " OrderNumber: " + paymentSettings.OrderNumber);
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
+            _logger.LogError(ex, "Straumur Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }
     }

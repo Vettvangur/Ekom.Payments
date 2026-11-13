@@ -2,7 +2,6 @@ using Ekom.Payments.AltaPay;
 using Ekom.Payments.AltaPay.Model;
 using Ekom.Payments.Helpers;
 using Ekom.Payments.Netgiro;
-using Ekom.Payments.Straumur;
 using Ekom.Payments.Valitor;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
@@ -20,7 +19,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Xunit;
-using StraumurResponse = Ekom.Payments.Straumur.Response;
 
 namespace Ekom.Payments.Tests;
 
@@ -31,72 +29,8 @@ namespace Ekom.Payments.Tests;
 public sealed class CallbackVerificationTests
 {
     const string NetgiroSecret = "netgiro-test-secret";
-    const string StraumurKey = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
     const string AltaSecret = "alta-test-secret";
     static readonly Guid NetgiroApplicationId = Guid.Parse("2f1f6c1e-7c4b-4d0c-9a57-3b8d6e241905");
-
-    #region Straumur
-
-    [Fact]
-    public async Task StraumurAcceptsSignedConfirmation()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var order = await f.InsertAsync(1990, new StraumurSettings { HmacKey = StraumurKey }, "straumur");
-
-        var response = StraumurConfirmation(order.UniqueId, StraumurKey);
-
-        Assert.IsType<OkResult>(await f.Straumur().Post(response));
-        Assert.True((await f.Orders.GetAsync(order.UniqueId))!.Paid);
-        Assert.Equal(1, f.Completions);
-    }
-
-    [Fact]
-    public async Task StraumurDoesNotConfirmPaymentsWithoutAHmacKey()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var order = await f.InsertAsync(1990, new StraumurSettings { HmacKey = "" }, "straumur");
-
-        var response = StraumurConfirmation(order.UniqueId, hmacKey: "");
-
-        Assert.IsNotType<OkResult>(await f.Straumur().Post(response));
-        Assert.False((await f.Orders.GetAsync(order.UniqueId))!.Paid);
-        Assert.Equal(0, f.Completions);
-    }
-
-    [Fact]
-    public async Task StraumurDoesNotConfirmPaymentsOfOtherProviders()
-    {
-        await using var f = await Fixture.CreateAsync();
-        // Shares no settings with Straumur, apart from the name of the key
-        var order = await f.InsertAsync(1990, new { HmacKey = "" }, "otherprovider");
-
-        Assert.IsType<NotFoundResult>(await f.Straumur().Post(StraumurConfirmation(order.UniqueId, hmacKey: "")));
-        Assert.False((await f.Orders.GetAsync(order.UniqueId))!.Paid);
-    }
-
-    static StraumurResponse StraumurConfirmation(Guid reference, string hmacKey)
-    {
-        var response = new StraumurResponse
-        {
-            CheckoutReference = "checkout-1",
-            PayfacReference = "payfac-1",
-            MerchantReference = reference.ToString(),
-            Amount = "199000",
-            Currency = "ISK",
-            Reason = "383528:1111:03/2030",
-            Success = "true",
-            AdditionalData = new PaymentEventDetails { CardNumber = "****1111" },
-        };
-        // HMAC SHA256, hex key, of checkoutReference:payfacReference:merchantReference:amount:currency:reason:success
-        response.HmacSignature = Convert.ToBase64String(new HMACSHA256(Convert.FromHexString(hmacKey)).ComputeHash(
-            Encoding.UTF8.GetBytes(string.Join(':',
-                response.CheckoutReference, response.PayfacReference, response.MerchantReference,
-                response.Amount, response.Currency, response.Reason, response.Success))));
-
-        return response;
-    }
-
-    #endregion
 
     #region AltaPay
 
@@ -306,9 +240,6 @@ public sealed class CallbackVerificationTests
             }
             return Orders.InsertAsync(total, PaymentSettings(total), stored, OrderId.ToString(), new DefaultHttpContext());
         }
-
-        public StraumurResponseController Straumur() => Controller(new StraumurResponseController(
-            NullLogger<StraumurResponseController>.Instance, _settings, Orders, this, this));
 
         public AltaResponseController AltaPay() => Controller(new AltaResponseController(
             NullLogger<AltaResponseController>.Instance, _settings, Orders, this, this, this));
