@@ -1,11 +1,13 @@
+using Ekom.Models.Payments;
 using Ekom.Payments.TeyaConsumerloans.Models;
+using Ekom.Services;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using System.Globalization;
+using Newtonsoft.Json.Linq;
 using System.Net;
 using System.Net.Mail;
 using System.Threading.Channels;
@@ -35,9 +37,18 @@ public class TeyaConsumerloansPollingService : BackgroundService
     };
 
     const string SuccessStatus = "SUCCESS";
+    // Where the loan token is kept in the provider data stored with the payment.
+    const string TokenProperty = "teyaToken";
+
+    // How legacy payment rows were marked for monitoring before payments were recorded on the Ekom order.
     internal const string RecoveryKey = "teyaConsumerloansPolling";
     internal const string RecoveryPending = "pending";
-    internal const string RecoveryFinished = "finished";
+
+    /// <summary>
+    /// After a restart, unfinished loans requested within this period are checked again.
+    /// Older ones were already checked or reviewed.
+    /// </summary>
+    internal static readonly TimeSpan RecoveryLookback = TimeSpan.FromDays(7);
 
     internal CancellationToken ApplicationStarted { get; set; }
 
@@ -46,7 +57,8 @@ public class TeyaConsumerloansPollingService : BackgroundService
 
     readonly ILogger<TeyaConsumerloansPollingService> _logger;
     readonly IDatabaseFactory _dbFac;
-    readonly IOrderService _orderService;
+    readonly IOrderService _legacyOrders;
+    readonly IOrderPayments _payments;
     readonly PaymentsConfiguration _settings;
     readonly IMailService _mailSvc;
     readonly IHttpContextAccessor _httpContextAccessor;
@@ -57,7 +69,8 @@ public class TeyaConsumerloansPollingService : BackgroundService
         ILogger<TeyaConsumerloansPollingService> logger,
         IHttpClientFactory httpClientFactory,
         IDatabaseFactory dbFac,
-        IOrderService orderService,
+        IOrderService legacyOrders,
+        IOrderPayments payments,
         PaymentsConfiguration settings,
         IMailService mailSvc,
         IHttpContextAccessor httpContextAccessor,
@@ -65,7 +78,8 @@ public class TeyaConsumerloansPollingService : BackgroundService
     {
         _logger = logger;
         _dbFac = dbFac;
-        _orderService = orderService;
+        _legacyOrders = legacyOrders;
+        _payments = payments;
         _settings = settings;
         _mailSvc = mailSvc;
         _httpContextAccessor = httpContextAccessor;
@@ -131,47 +145,108 @@ public class TeyaConsumerloansPollingService : BackgroundService
         return TimeSpan.FromMinutes(settings.TokenValidMinutes!.Value + settings.ProgressValidMinutes!.Value) + operationalBuffer;
     }
 
+    /// <summary>
+    /// Monitoring that resumes after a restart needs the exact absolute URL used when requesting the token.
+    /// </summary>
     internal static void EnableRecovery(PaymentSettings settings, Uri redirectUrl)
     {
-        settings.OrderCustomData[RecoveryKey] = RecoveryPending;
-        // Recovery needs the exact absolute URL used when requesting the token.
         settings.SuccessUrl = redirectUrl;
     }
 
-    internal async Task<IReadOnlyList<PollingRequest>> GetRecoveryRequestsAsync(CancellationToken ct = default)
+    /// <summary>The provider data stored with a payment: the loan settings and the loan token.</summary>
+    internal static JObject StoredPayment(TeyaConsumerloansSettings settings, string token)
     {
-        await using var db = _dbFac.GetDatabase();
-        var orders = await db.OrderStatus
-            .Where(x => !x.Paid && x.EkomPaymentSettingsData.Contains(RecoveryKey))
-            .ToListAsync(ct).ConfigureAwait(false);
+        var json = JObject.FromObject(settings);
+        json[Ekom.Payments.Providers.PaymentRowGuard.ProviderPropertyName] = Payment._ppNodeName;
+        json[TokenProperty] = token;
+        return json;
+    }
+
+    /// <summary>
+    /// The loans to pick up again after a restart: Teya payments that were requested and have had nothing
+    /// recorded since. A loan whose outcome or review note was recorded is not monitored again.
+    /// </summary>
+    internal async Task<IReadOnlyList<PollingRequest>> GetRecoveryRequestsAsync(CancellationToken ct = default, TimeProvider? timeProvider = null)
+    {
+        await ImportLegacyAttemptsAsync(ct).ConfigureAwait(false);
+
+        var since = (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime - RecoveryLookback;
+        var payments = await _payments.GetOpenPaymentsAsync(Payment._ppNodeName, since, ct).ConfigureAwait(false);
         var requests = new List<PollingRequest>();
-        foreach (var order in orders)
+        foreach (var payment in payments)
         {
             try
             {
-                var paymentSettings = order.EkomPaymentSettings;
-                if (!paymentSettings.OrderCustomData.TryGetValue(RecoveryKey, out var state) || state != RecoveryPending)
+                var stored = string.IsNullOrWhiteSpace(payment.ProviderData) ? null : JObject.Parse(payment.ProviderData);
+                // Payments copied from legacy rows kept the token as the provider's lookup key.
+                var token = stored?[TokenProperty]?.Value<string>() ?? payment.ProviderReference;
+                var settings = stored?.ToObject<TeyaConsumerloansSettings>();
+                var redirectUrl = payment.GetPaymentSettings()?.SuccessUrl;
+                if (settings?.ApiBaseUrl == null || string.IsNullOrWhiteSpace(token) || redirectUrl == null)
                 {
+                    // Not a Teya loan, or not enough left of it to ask Teya about.
                     continue;
                 }
-                var settings = JsonConvert.DeserializeObject<TeyaConsumerloansSettings>(order.EkomPaymentProviderData!)!;
+
                 requests.Add(new PollingRequest
                 {
-                    OrderId = order.UniqueId,
-                    Token = order.CustomData!,
-                    RedirectUrl = paymentSettings.SuccessUrl,
+                    PaymentId = payment.PaymentId,
+                    Token = token,
+                    RedirectUrl = redirectUrl,
                     Settings = settings,
-                    // OrderService stores DateTime.Now. Convert from that same local
-                    // time convention; never grant a fresh window after a restart.
-                    RecoveryDeadlineUtc = new DateTimeOffset(order.Date).ToUniversalTime() + GetPollingTimeout(settings),
+                    // Never grant a fresh window after a restart.
+                    RecoveryDeadlineUtc = new DateTimeOffset(DateTime.SpecifyKind(payment.CreatedUtc, DateTimeKind.Utc)) + GetPollingTimeout(settings),
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Teya Consumer Loans recovery could not read payment attempt {OrderId}.", order.UniqueId);
+                _logger.LogError(ex, "Teya Consumer Loans recovery could not read a payment. " + PaymentLog.Template,
+                    payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
             }
         }
         return requests;
+    }
+
+    /// <summary>
+    /// Loans started before payments were recorded on the Ekom order only exist as legacy rows marked for
+    /// monitoring. They are copied to Ekom so a loan in progress during the upgrade is still followed up.
+    /// </summary>
+    async Task ImportLegacyAttemptsAsync(CancellationToken ct)
+    {
+        try
+        {
+            List<OrderStatus> rows;
+            await using (var db = _dbFac.GetDatabase())
+            {
+                rows = await db.OrderStatus
+                    .Where(x => !x.Paid && x.EkomPaymentSettingsData.Contains(RecoveryKey))
+                    .ToListAsync(ct).ConfigureAwait(false);
+            }
+
+            foreach (var row in rows)
+            {
+                try
+                {
+                    if (row.EkomPaymentSettings.OrderCustomData.TryGetValue(RecoveryKey, out var state) && state == RecoveryPending)
+                    {
+                        await LegacyPaymentBridge.GetOrImportAsync(_payments, _legacyOrders, row.UniqueId).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Teya Consumer Loans recovery could not copy legacy payment {PaymentId}.", row.UniqueId);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // A site that never used the legacy payment table has nothing to copy.
+            _logger.LogDebug(ex, "Teya Consumer Loans recovery found no legacy payments to copy.");
+        }
     }
 
     internal async Task PollOrderAsync(PollingRequest request, CancellationToken stoppingToken, TimeProvider? timeProvider = null)
@@ -201,7 +276,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Teya Consumer Loans polling failed. OrderId: {OrderId}", request.OrderId);
+            _logger.LogError(ex, "Teya Consumer Loans polling failed. PaymentId: {PaymentId}", request.PaymentId);
             await ActivityAsync(request, $"Payment monitoring or completion failed ({ex.GetType().Name}); check the payment before retrying.", LogLevel.Error).ConfigureAwait(false);
         }
     }
@@ -222,7 +297,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
             catch (Exception ex) when (!checkOnce && !cancellationToken.IsCancellationRequested &&
                 (ex is HttpRequestException httpError && IsTransient(httpError) || ex is OperationCanceledException))
             {
-                _logger.LogWarning(ex, "Teya Consumer Loans status check failed; retrying. OrderId: {OrderId}", request.OrderId);
+                _logger.LogWarning(ex, "Teya Consumer Loans status check failed; retrying. PaymentId: {PaymentId}", request.PaymentId);
                 if (!statusCheckFailed)
                 {
                     await ActivityAsync(request, "Temporary status check failure; retrying within the payment monitoring window.", LogLevel.Warning).ConfigureAwait(false);
@@ -247,7 +322,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
 
             if (TerminalStatuses.Contains(status))
             {
-                await FinishRecoveryAsync(request).ConfigureAwait(false);
+                await RecordOutcomeAsync(request, status).ConfigureAwait(false);
                 break;
             }
 
@@ -256,14 +331,13 @@ public class TeyaConsumerloansPollingService : BackgroundService
                 // Do not retry validation or success callbacks as part of status
                 // polling. Their existing error handling remains unchanged.
                 await MarkAsPaid(request).ConfigureAwait(false);
-                await FinishRecoveryAsync(request).ConfigureAwait(false);
                 break;
             }
 
             if (checkOnce)
             {
                 await ActivityAsync(request, $"Startup recovery: overdue loan is still {status}; manual review is required. Automatic recovery finished.", LogLevel.Warning).ConfigureAwait(false);
-                await FinishRecoveryAsync(request).ConfigureAwait(false);
+                await RecordReviewNoteAsync(request, status).ConfigureAwait(false);
                 break;
             }
 
@@ -279,31 +353,50 @@ public class TeyaConsumerloansPollingService : BackgroundService
             || (int)exception.StatusCode >= 500;
     }
 
-    async Task FinishRecoveryAsync(PollingRequest request)
+    /// <summary>
+    /// Teya's final answer that the loan did not go through. Recording it also ends monitoring of the payment.
+    /// </summary>
+    async Task RecordOutcomeAsync(PollingRequest request, string status)
     {
         try
         {
-            var order = await _orderService.GetAsync(request.OrderId).ConfigureAwait(false);
-            if (order == null)
+            var cancelled = string.Equals(status, "CANCELED", StringComparison.OrdinalIgnoreCase);
+            await _payments.RecordAsync(new PaymentTransaction
             {
-                return;
-            }
-            var settings = order.EkomPaymentSettings;
-            if (!settings.OrderCustomData.ContainsKey(RecoveryKey))
-            {
-                return;
-            }
-            settings.OrderCustomData[RecoveryKey] = RecoveryFinished;
-            await using var db = _dbFac.GetDatabase();
-            // Only update the recovery metadata, never overwrite Paid or other
-            // payment columns with an older snapshot of the attempt.
-            await db.OrderStatus.Where(x => x.UniqueId == request.OrderId)
-                .Set(x => x.EkomPaymentSettingsData, JsonConvert.SerializeObject(settings))
-                .UpdateAsync().ConfigureAwait(false);
+                PaymentId = request.PaymentId,
+                Type = cancelled ? PaymentTransactionType.Cancelled : PaymentTransactionType.Failed,
+                PaymentMethod = "Teya Consumer Loans",
+                Message = cancelled ? "The loan application was cancelled" : $"The loan application ended with Teya status {status}",
+                Details = [new PaymentDetail("status", "Teya loan status", status)],
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Teya Consumer Loans recovery state could not be saved. OrderId: {OrderId}; a later restart may check it again.", request.OrderId);
+            _logger.LogError(ex, "Teya Consumer Loans outcome could not be recorded. PaymentId: {PaymentId}; a later restart checks the loan again.", request.PaymentId);
+        }
+    }
+
+    /// <summary>
+    /// The loan was still undecided when its monitoring window had passed. The note tells staff to check it
+    /// with Teya, and ends automatic monitoring of the payment without calling it paid or failed.
+    /// </summary>
+    async Task RecordReviewNoteAsync(PollingRequest request, string status)
+    {
+        try
+        {
+            await _payments.RecordAsync(new PaymentTransaction
+            {
+                PaymentId = request.PaymentId,
+                Type = PaymentTransactionType.Note,
+                PaymentMethod = "Teya Consumer Loans",
+                Message = $"Loan monitoring ended while the loan was still {status}. Check the loan with Teya before the order is handled.",
+                IdempotencyKey = $"{request.PaymentId:N}:monitoring-ended",
+                Details = [new PaymentDetail("status", "Teya loan status", status)],
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Teya Consumer Loans review note could not be recorded. PaymentId: {PaymentId}; a later restart checks the loan again.", request.PaymentId);
         }
     }
 
@@ -311,18 +404,20 @@ public class TeyaConsumerloansPollingService : BackgroundService
     {
         ArgumentNullException.ThrowIfNull(request.Settings.MerchantId);
 
-        _logger.LogInformation("Teya Consumer Loans Response - Start. OrderId: {OrderId}", request.OrderId);
-
-        var order = await _orderService.GetAsync(request.OrderId);
-        if (order == null)
+        var payment = await _payments.GetAsync(request.PaymentId).ConfigureAwait(false);
+        if (payment == null)
         {
-            _logger.LogWarning("Teya Consumer Loans Response - Order not found. OrderId: {OrderId}", request.OrderId);
+            _logger.LogWarning("Teya Consumer Loans Response - Payment not found. PaymentId: {PaymentId}", request.PaymentId);
             return;
         }
 
-        if (order.Paid)
+        using var scope = PaymentLog.BeginScope(_logger, payment);
+
+        var orderPayments = await _payments.GetForOrderAsync(payment.OrderUniqueId).ConfigureAwait(false);
+        if (orderPayments.Attempts.Any(x => x.PaymentId == payment.PaymentId && x.CapturedUtc != null))
         {
-            _logger.LogInformation("Teya Consumer Loans Response - SUCCESS - Previously validated");
+            _logger.LogInformation("Teya Consumer Loans Response - SUCCESS - Previously validated. " + PaymentLog.Template,
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
             return;
         }
 
@@ -336,57 +431,42 @@ public class TeyaConsumerloansPollingService : BackgroundService
             };
             var contractInfo = await _client.ValidateLoanAsync(request.Settings, validationRequest).ConfigureAwait(false);
 
-            try
-            {
-                var paymentData = new PaymentData
-                {
-                    Id = order.UniqueId,
-                    Date = DateTime.Now,
-                    CustomData = JsonConvert.SerializeObject(contractInfo),
-                    PaymentMethod = "Teya Consumer Loans",
-                    Amount = order.Amount.ToString(CultureInfo.InvariantCulture),
-                };
+            await ActivityAsync(request, "Loan validated; recording the payment and completing the Ekom order.", success: true).ConfigureAwait(false);
 
-                await using var db = _dbFac.GetDatabase();
-                await db.InsertOrReplaceAsync(paymentData).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Teya Consumer Loans Response - Error saving payment data");
-            }
-
-            order.Paid = true;
-            await _orderService.UpdateAsync(order).ConfigureAwait(false);
-            await ActivityAsync(request, "Loan validated; payment recorded. Completing the Ekom order.", success: true).ConfigureAwait(false);
-
+            // Recording the capture completes the order's checkout, which needs an Umbraco context.
             using (_paymentExecutionContext.EnsureContext())
             {
-                await Events.OnSuccessAsync(this, new SuccessEventArgs
+                await _payments.RecordAsync(new PaymentTransaction
                 {
-                    OrderStatus = order,
+                    PaymentId = payment.PaymentId,
+                    Type = PaymentTransactionType.Captured,
+                    Amount = payment.Amount,
+                    TransactionId = contractInfo.ContractNumber,
+                    AuthorizationCode = contractInfo.AuthorizationNumber,
+                    PaymentMethod = "Teya Consumer Loans",
+                    IdempotencyKey = LegacyPaymentBridge.CaptureKey(payment.PaymentId),
+                    Details = [new PaymentDetail("contractNumber", "Loan contract number", contractInfo.ContractNumber, true)],
+                    // The borrower's national id is not kept with the payment.
+                    RawData = JsonConvert.SerializeObject(new { contractInfo.ContractNumber, contractInfo.AuthorizationNumber }),
                 }).ConfigureAwait(false);
             }
 
-            _logger.LogInformation("Teya Consumer Loans Response - SUCCESS. OrderId: {OrderId}", order.UniqueId);
-            await ActivityAsync(request, "Payment success notification delivered to Ekom.").ConfigureAwait(false);
+            _logger.LogInformation("Teya Consumer Loans Response - SUCCESS. " + PaymentLog.Template,
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
+            await ActivityAsync(request, "Payment recorded on the Ekom order.").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Teya Consumer Loans Response - Failed. OrderId: {OrderId}", order.UniqueId);
-
-            using var paymentContext = _paymentExecutionContext.EnsureContext();
-
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-                OrderStatus = order,
-            }).ConfigureAwait(false);
+            _logger.LogError(ex, "Teya Consumer Loans Response - Failed. " + PaymentLog.Template,
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
 
             if (_settings.SendEmailAlerts)
             {
+                using var paymentContext = _paymentExecutionContext.EnsureContext();
+
                 await _mailSvc.SendAsync(new MailMessage
                 {
-                    Subject = "Teya Consumer Loans Response - Failed " + order.UniqueId,
+                    Subject = $"Teya Consumer Loans Response - Failed. Order {payment.OrderNumber}, payment {payment.PaymentId}",
                     Body = $"<p>Teya Consumer Loans Response - Failed<p><br />{_httpContextAccessor.HttpContext?.Request.GetDisplayUrl()}<br />{ex}",
                     IsBodyHtml = true,
                 }).ConfigureAwait(false);
@@ -398,16 +478,17 @@ public class TeyaConsumerloansPollingService : BackgroundService
 
     async Task ActivityAsync(PollingRequest request, string message, LogLevel level = LogLevel.Information, bool success = false)
     {
-        _logger.Log(level, "Teya Consumer Loans - OrderId: {OrderId}; {Activity}", request.OrderId, message);
+        _logger.Log(level, "Teya Consumer Loans - PaymentId: {PaymentId}; {Activity}", request.PaymentId, message);
         try
         {
-            var order = await _orderService.GetAsync(request.OrderId).ConfigureAwait(false);
-            if (order != null)
+            var payment = await _payments.GetAsync(request.PaymentId).ConfigureAwait(false);
+            var paymentSettings = payment?.GetPaymentSettings();
+            if (paymentSettings != null)
             {
                 await Events.OnActivityAsync(this, new LoanActivityEventArgs
                 {
-                    PaymentId = request.OrderId,
-                    PaymentSettings = order.EkomPaymentSettings,
+                    PaymentId = request.PaymentId,
+                    PaymentSettings = paymentSettings,
                     Message = message,
                     Level = level,
                     IsSuccess = success,
@@ -416,7 +497,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Teya Consumer Loans activity log failed. OrderId: {OrderId}", request.OrderId);
+            _logger.LogError(ex, "Teya Consumer Loans activity log failed. PaymentId: {PaymentId}", request.PaymentId);
         }
     }
 }

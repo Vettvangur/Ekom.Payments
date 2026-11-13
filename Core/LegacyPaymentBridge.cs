@@ -91,7 +91,10 @@ static class LegacyPaymentBridge
         catch (Newtonsoft.Json.JsonException)
         {
         }
-        return payments.CreateAsync(settings, ProviderType(order), order.Amount, providerData, order.CustomData, null, order.UniqueId);
+        // Legacy rows were stamped with the server's local time.
+        var createdUtc = DateTime.SpecifyKind(order.Date, DateTimeKind.Local).ToUniversalTime();
+        return payments.CreateAsync(settings, ProviderType(order), order.Amount, providerData, order.CustomData, null, order.UniqueId,
+            order.Date == default ? null : createdUtc);
     }
 
     /// <summary>

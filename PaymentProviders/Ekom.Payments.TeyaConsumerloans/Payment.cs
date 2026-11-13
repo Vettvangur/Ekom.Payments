@@ -1,5 +1,6 @@
 using Ekom.Payments.Helpers;
 using Ekom.Payments.TeyaConsumerloans.Models;
+using Ekom.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,7 +17,7 @@ public class Payment : IPaymentProvider
 
     readonly ILogger<Payment> _logger;
     readonly IUmbracoService _uService;
-    readonly IOrderService _orderService;
+    readonly IOrderPayments _payments;
     readonly HttpContext _httpCtx;
     readonly IHttpClientFactory _httpClientFactory;
     readonly IConfiguration _config;
@@ -26,7 +27,7 @@ public class Payment : IPaymentProvider
         ILogger<Payment> logger,
         PaymentsConfiguration settings,
         IUmbracoService uService,
-        IOrderService orderService,
+        IOrderPayments payments,
         IHttpContextAccessor httpContext,
         IHttpClientFactory httpClientFactory,
         IConfiguration config,
@@ -34,7 +35,7 @@ public class Payment : IPaymentProvider
     {
         _logger = logger;
         _uService = uService;
-        _orderService = orderService;
+        _payments = payments;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
         _httpClientFactory = httpClientFactory;
         _config = config;
@@ -49,7 +50,8 @@ public class Payment : IPaymentProvider
 
         try
         {
-            _logger.LogInformation("Teya Consumer Loans Payment Request - Start");
+            _logger.LogInformation("Teya Consumer Loans Payment Request - Start. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
 
             var teyaSettings = paymentSettings.CustomSettings.ContainsKey(typeof(TeyaConsumerloansSettings))
                 ? paymentSettings.CustomSettings[typeof(TeyaConsumerloansSettings)] as TeyaConsumerloansSettings
@@ -93,20 +95,24 @@ public class Payment : IPaymentProvider
             var client = new TeyaConsumerloansClient(_httpClientFactory, _logger);
             var token = await client.CreateWebTokenAsync(teyaSettings, request).ConfigureAwait(false);
 
+            // Monitoring resumes after a restart with the exact absolute URL the token was requested with.
             TeyaConsumerloansPollingService.EnableRecovery(paymentSettings, successUrl);
-            var orderStatus = await _orderService.InsertAsync(
-                total,
+
+            // Store the payment on the Ekom order, with the loan token monitoring needs.
+            var payment = await _payments.CreateAsync(
                 paymentSettings,
-                teyaSettings,
-                token,
-                _httpCtx
+                _ppNodeName,
+                total,
+                TeyaConsumerloansPollingService.StoredPayment(teyaSettings, token),
+                httpContext: _httpCtx
             ).ConfigureAwait(false);
 
-            _logger.LogInformation("Teya Consumer Loans Payment Request - Amount: {Total} OrderId: {OrderId}", total, orderStatus.UniqueId);
+            _logger.LogInformation("Teya Consumer Loans Payment Request - " + PaymentLog.Template + " Amount: {Total}",
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, total);
 
             var pollingRequest = new PollingRequest
-            { 
-                OrderId = orderStatus.UniqueId,
+            {
+                PaymentId = payment.PaymentId,
                 Token = token,
                 RedirectUrl = successUrl,
                 Settings = teyaSettings
@@ -119,11 +125,8 @@ public class Payment : IPaymentProvider
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Teya Consumer Loans Payment Request - Payment Request Failed. OrderId: {OrderId} OrderNumber: {OrderNumber}", paymentSettings.OrderUniqueId, paymentSettings.OrderNumber);
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            }).ConfigureAwait(false);
+            _logger.LogError(ex, "Teya Consumer Loans Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }
     }

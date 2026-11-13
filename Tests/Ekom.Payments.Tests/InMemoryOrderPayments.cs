@@ -14,6 +14,9 @@ sealed class InMemoryOrderPayments : IOrderPayments
 
     public List<OrderPayment> Payments { get; } = [];
 
+    /// <summary>Makes completing the order's checkout fail after a capture was stored.</summary>
+    public bool FailCheckoutCompletion { get; set; }
+
     /// <summary>The transactions that were stored, without repeated deliveries.</summary>
     public List<PaymentTransaction> Recorded { get; } = [];
 
@@ -37,6 +40,7 @@ sealed class InMemoryOrderPayments : IOrderPayments
             ProviderReference = payment.ProviderReference,
             Settings = payment.Settings,
             ProviderData = payment.ProviderData,
+            CreatedUtc = payment.CreatedUtc ?? DateTime.UtcNow,
         };
         Payments.Add(row);
         return Task.FromResult(row);
@@ -50,6 +54,9 @@ sealed class InMemoryOrderPayments : IOrderPayments
             : transaction.IdempotencyKey;
         var recorded = _keys.Add(key);
         if (recorded) Recorded.Add(transaction);
+        // Like Ekom: the transaction is stored first, completing the order's checkout comes after.
+        if (recorded && FailCheckoutCompletion && transaction.Type == PaymentTransactionType.Captured)
+            throw new InvalidOperationException("Simulated checkout failure");
         return Task.FromResult(new PaymentRecordResult(recorded, PaymentStatus.Paid, null));
     }
 
@@ -60,8 +67,25 @@ sealed class InMemoryOrderPayments : IOrderPayments
         => Task.FromResult(Payments.LastOrDefault(x => x.ProviderReference == providerReference
             && (string.IsNullOrEmpty(x.ProviderType) || x.ProviderType == providerType)));
 
+    public Task<IReadOnlyList<OrderPayment>> GetOpenPaymentsAsync(string providerType, DateTime createdAfterUtc, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<OrderPayment>>(Payments
+            .Where(x => x.CreatedUtc > createdAfterUtc
+                && (string.IsNullOrEmpty(x.ProviderType) || x.ProviderType == providerType)
+                && Recorded.All(t => t.PaymentId != x.PaymentId))
+            .ToList());
+
     public Task<OrderPaymentsView> GetForOrderAsync(Guid orderId, CancellationToken ct = default)
-        => Task.FromResult(new OrderPaymentsView(null, [], []));
+    {
+        var attempts = Payments.Where(x => x.OrderUniqueId == orderId).Select(x => new OrderPaymentAttempt
+        {
+            PaymentId = x.PaymentId,
+            Status = Captures(x.PaymentId).Any() ? "Paid" : "Pending",
+            Amount = x.Amount,
+            CreatedUtc = x.CreatedUtc,
+            CapturedUtc = Captures(x.PaymentId).Any() ? DateTime.UtcNow : null,
+        }).ToList();
+        return Task.FromResult(new OrderPaymentsView(attempts.FirstOrDefault(x => x.CapturedUtc != null), attempts, []));
+    }
 
     public Task<Guid?> FindOrderAsync(string paymentIdOrTransactionId, CancellationToken ct = default)
         => Task.FromResult<Guid?>(null);

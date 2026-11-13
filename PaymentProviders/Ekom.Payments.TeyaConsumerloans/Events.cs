@@ -24,28 +24,13 @@ public static class Events
     /// <summary>
     /// Raises the success event on successful loan application creation.
     /// </summary>
-    internal static async Task OnSuccessAsync(object sender, SuccessEventArgs successEventArgs)
-    {
-        Success?.Invoke(sender, successEventArgs);
-        await Payments.Events.OnSuccessAsync(sender, successEventArgs);
-    }
-
-    /// <summary>
-    /// Raises the error event on failed loan applications.
-    /// </summary>
-    internal static async Task OnErrorAsync(object sender, ErrorEventArgs errorEventArgs)
-    {
-        Error?.Invoke(sender, errorEventArgs);
-        await Payments.Events.OnErrorAsync(sender, errorEventArgs);
-    }
-
-    /// <summary>
-    /// Event fired when the loan application is successfully initialized.
-    /// </summary>
+    /// <summary>No longer raised.</summary>
+    [Obsolete("Teya Consumer Loans payments are recorded on the Ekom order. Use Ekom.Events.OrderEvents.PaymentRecordedAsync.")]
+#pragma warning disable CS0067 // Kept so existing subscriptions compile; it is never raised.
     public static event EventHandler<SuccessEventArgs>? Success;
 
-    /// <summary>
-    /// Event fired on loan application errors.
-    /// </summary>
+    /// <summary>No longer raised.</summary>
+    [Obsolete("Teya Consumer Loans payments are recorded on the Ekom order. Use Ekom.Events.OrderEvents.PaymentRecordedAsync.")]
     public static event EventHandler<ErrorEventArgs>? Error;
+#pragma warning restore CS0067
 }
