@@ -69,7 +69,7 @@ public class BorgunResponseController : ControllerBase
                 return NotFound();
             }
 
-            if (!payment.BelongsTo(Payment._ppNodeName))
+            if (!PaymentRowGuard.BelongsTo(payment, Payment._ppNodeName))
             {
                 _logger.LogWarning("Borgun Payment Response - Not a Borgun payment. PaymentId: {PaymentId}", paymentId);
 

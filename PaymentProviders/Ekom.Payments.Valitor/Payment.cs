@@ -1,5 +1,5 @@
 using Ekom.Payments.Helpers;
-using Ekom.Payments.Providers;
+using Ekom.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -23,7 +23,7 @@ public class Payment : IPaymentProvider
     readonly ILogger<Payment> _logger;
     readonly PaymentsConfiguration _settings;
     readonly IUmbracoService _uService;
-    readonly IOrderService _orderService;
+    readonly IOrderPayments _payments;
     readonly HttpContext _httpCtx;
     readonly IConfiguration _config;
 
@@ -34,14 +34,14 @@ public class Payment : IPaymentProvider
         ILogger<Payment> logger,
         PaymentsConfiguration settings,
         IUmbracoService uService,
-        IOrderService orderService,
+        IOrderPayments payments,
         IHttpContextAccessor httpContext,
         IConfiguration config)
     {
         _logger = logger;
         _settings = settings;
         _uService = uService;
-        _orderService = orderService;
+        _payments = payments;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
         _config = config;
     }
@@ -96,17 +96,17 @@ public class Payment : IPaymentProvider
             var sb = new StringBuilder(valitorSettings.VerificationCode);
             sb.Append("0");
 
-            // Persist in database and retrieve unique order id
-            var orderStatus = await _orderService.InsertAsync(
-                total,
+            // Store the payment on the Ekom order. Valitor echoes the payment id back as its reference number.
+            var payment = await _payments.CreateAsync(
                 paymentSettings,
-                PaymentRowGuard.Stamp(valitorSettings, _ppNodeName),
-                paymentSettings.OrderUniqueId.ToString(),
-                _httpCtx
+                _ppNodeName,
+                total,
+                valitorSettings,
+                httpContext: _httpCtx
             ).ConfigureAwait(false);
 
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
+            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + payment.PaymentId);
 
             var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
             var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
@@ -117,7 +117,7 @@ public class Payment : IPaymentProvider
                 { "MerchantID", valitorSettings.MerchantId },
                 { "AuthorizationOnly", "0" },
 
-                { "ReferenceNumber", orderStatus.UniqueId.ToString() },
+                { "ReferenceNumber", payment.PaymentId.ToString() },
 
                 { "Currency", paymentSettings.Currency },
                 { "Language", ParseSupportedLanguages(paymentSettings.Language) },
@@ -165,7 +165,7 @@ public class Payment : IPaymentProvider
             }
 
             sb.Append(valitorSettings.MerchantId);
-            sb.Append(orderStatus.UniqueId);
+            sb.Append(payment.PaymentId);
             sb.Append(paymentSettings.SuccessUrl);
             sb.Append(reportUrl);
             sb.Append(paymentSettings.Currency);
@@ -189,7 +189,8 @@ public class Payment : IPaymentProvider
 
             formValues.Add("DigitalSignature", CryptoHelpers.GetSHA256HexStringSum(sb.ToString()));
 
-            _logger.LogInformation("Valitor Payment Request - Amount: " + total + " OrderId: " + orderStatus.UniqueId);
+            _logger.LogInformation("Valitor Payment Request - " + PaymentLog.Template + " Amount: {Total}",
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, total);
 
             var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
 
@@ -197,11 +198,8 @@ public class Payment : IPaymentProvider
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AsynchronousExample Payment Request - Payment Request Failed");
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
+            _logger.LogError(ex, "Valitor Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }
     }

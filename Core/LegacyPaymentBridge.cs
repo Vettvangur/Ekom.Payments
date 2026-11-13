@@ -157,6 +157,7 @@ static class LegacyPaymentBridge
         catch (Newtonsoft.Json.JsonException)
         {
         }
+        // Rows older than provider stamps: the provider is unknown.
         return string.Empty;
     }
 
