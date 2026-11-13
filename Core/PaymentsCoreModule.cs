@@ -1,23 +1,23 @@
-using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace Ekom.Payments.AspNetCore;
+namespace Ekom.Payments;
 
-static class ApplicationBuilderExtensions
+/// <summary>
+/// Registers the services shared by the payment providers. Ekom runs this at startup,
+/// so a site only installs the provider packages it wants.
+/// </summary>
+public sealed class PaymentsCoreModule : IPaymentModule
 {
-    public static IServiceCollection AddAspNetCoreEkomPayments(this IServiceCollection services, IConfiguration configuration)
+    public void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
-        var config = new PaymentsConfiguration();
-        configuration.Bind("Ekom:Payments", config);
-        
-        services.AddSingleton(config);
+        services.AddSingleton<IStartupFilter, EkomPaymentsStartupFilter>();
         services.AddSingleton<IDatabaseFactory, DatabaseFactory>();
-
         services.AddTransient<EnsureTablesExist>();
         services.AddTransient<IOrderService, OrderService>();
-        services.AddTransient<EkomPayments>();
+        services.AddTransient<PaymentOrderRetriever>();
 
         var cmsSection = configuration.GetSection("Umbraco:CMS");
         var smtpSection = cmsSection.GetSection("Global:Smtp");
@@ -30,20 +30,6 @@ static class ApplicationBuilderExtensions
                 smtpSection["Username"],
                 smtpSection["Password"],
                 smtpSection["From"],
-                cmsSection["Content:Notifications:Email"])
-        );
-
-        return services;
-
-    }
-
-    public static IApplicationBuilder UseEkomPaymentsControllers(this IApplicationBuilder app)
-    {
-        app.UseEndpoints(endpoints =>
-        {
-            endpoints.MapControllers();
-        });
-
-        return app;
+                cmsSection["Content:Notifications:Email"]));
     }
 }

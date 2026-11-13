@@ -511,7 +511,7 @@ public sealed class TeyaConsumerloansTests
             {
                 ["ConnectionStrings:umbracoDbDSN_ProviderName"] = "Microsoft.Data.Sqlite",
             }).Build();
-            new AspNetCore.EnsureTablesExist(f, configuration, NullLogger<AspNetCore.EnsureTablesExist>.Instance).Create();
+            new EnsureTablesExist(f, configuration, NullLogger<EnsureTablesExist>.Instance).Create();
             f.Service = new TeyaConsumerloansPollingService(
                 NullLogger<TeyaConsumerloansPollingService>.Instance, f.Http, f, f.Orders,
                 new PaymentsConfiguration(), null!, new HttpContextAccessor(), f._context);

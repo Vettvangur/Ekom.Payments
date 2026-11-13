@@ -78,4 +78,10 @@ public class Response
     /// </summary>
     [RegularExpression("[0-9a-zA-Z .]+")]
     public string Date { get; set; }
+
+    /// <summary>The example gateway sets this when the customer's payment was declined.</summary>
+    public bool Failed { get; set; }
+
+    /// <summary>Why the payment was declined.</summary>
+    public string? Message { get; set; }
 }

@@ -10,6 +10,9 @@ public static class Events
     /// </summary>
     internal static async Task OnSuccessAsync(object sender, SuccessEventArgs successEventArgs)
     {
+        // Ekom records the capture and completes the order's checkout.
+        await LegacyPaymentBridge.CapturedAsync(successEventArgs.OrderStatus).ConfigureAwait(false);
+
         if (SuccessAsync != null)
         {
             foreach (var handler in SuccessAsync.GetInvocationList().Cast<Func<object, SuccessEventArgs, Task>>())
@@ -24,6 +27,8 @@ public static class Events
     /// </summary>
     internal static async Task OnErrorAsync(object sender, ErrorEventArgs errorEventArgs)
     {
+        await LegacyPaymentBridge.FailedAsync(errorEventArgs.OrderStatus, errorEventArgs.Exception).ConfigureAwait(false);
+
         if (ErrorAsync != null)
         {
             foreach (var handler in ErrorAsync.GetInvocationList().Cast<Func<object, ErrorEventArgs, Task>>())

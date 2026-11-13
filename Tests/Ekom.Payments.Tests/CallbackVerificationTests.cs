@@ -661,7 +661,7 @@ public sealed class CallbackVerificationTests
         {
             var f = new Fixture();
             f.Orders = new OrderService(f._settings, f);
-            new AspNetCore.EnsureTablesExist(f, f._configuration, NullLogger<AspNetCore.EnsureTablesExist>.Instance).Create();
+            new EnsureTablesExist(f, f._configuration, NullLogger<EnsureTablesExist>.Instance).Create();
             Events.SuccessAsync += f.CompleteAsync;
             return Task.FromResult(f);
         }

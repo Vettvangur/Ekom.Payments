@@ -7,12 +7,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../../AspNetCore/EnsureTablesExist.cs" Link="Infrastructure/EnsureTablesExist.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="8.1.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.AltaPay/Ekom.Payments.AltaPay.csproj" />
+    <ProjectReference Include="../../PaymentProviders/Ekom.Payments.AsynchronousExample/Ekom.Payments.AsynchronousExample.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Borgun/Ekom.Payments.Borgun.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Netgiro/Ekom.Payments.Netgiro.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Straumur/Ekom.Payments.Straumur.csproj" />

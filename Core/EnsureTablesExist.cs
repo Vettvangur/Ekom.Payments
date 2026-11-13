@@ -3,7 +3,7 @@ using LinqToDB.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace Ekom.Payments.AspNetCore;
+namespace Ekom.Payments;
 
 class EnsureTablesExist
 {

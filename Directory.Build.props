@@ -1,0 +1,11 @@
+<Project>
+    <!-- Machine-specific settings (not committed): set UseProjectReferences and EkomRoot to build against a local Ekom checkout. -->
+    <Import Project="$(MSBuildThisFileDirectory)Directory.Build.local.props" Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.local.props')" />
+    <PropertyGroup>
+        <!-- true: reference the Ekom projects in EkomRoot. false: reference the Ekom NuGet packages. -->
+        <UseProjectReferences Condition="'$(UseProjectReferences)' == ''">false</UseProjectReferences>
+        <EkomRoot Condition="'$(EkomRoot)' == ''">$(MSBuildThisFileDirectory)..\Ekom\</EkomRoot>
+        <!-- The lowest Ekom version these payment providers work with. -->
+        <EkomVersion Condition="'$(EkomVersion)' == ''">1.1.0</EkomVersion>
+    </PropertyGroup>
+</Project>
