@@ -56,8 +56,9 @@ sealed class InMemoryOrderPayments : IOrderPayments
     public Task<OrderPayment?> GetAsync(Guid paymentId, CancellationToken ct = default)
         => Task.FromResult(Payments.FirstOrDefault(x => x.PaymentId == paymentId));
 
-    public Task<OrderPayment?> GetByProviderReferenceAsync(string providerName, string providerReference, CancellationToken ct = default)
-        => Task.FromResult(Payments.LastOrDefault(x => x.ProviderReference == providerReference && x.ProviderName == providerName));
+    public Task<OrderPayment?> GetByProviderReferenceAsync(string providerType, string providerReference, CancellationToken ct = default)
+        => Task.FromResult(Payments.LastOrDefault(x => x.ProviderReference == providerReference
+            && (string.IsNullOrEmpty(x.ProviderType) || x.ProviderType == providerType)));
 
     public Task<OrderPaymentsView> GetForOrderAsync(Guid orderId, CancellationToken ct = default)
         => Task.FromResult(new OrderPaymentsView(null, [], []));

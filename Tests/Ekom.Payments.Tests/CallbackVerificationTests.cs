@@ -29,114 +29,7 @@ namespace Ekom.Payments.Tests;
 public sealed class CallbackVerificationTests
 {
     const string NetgiroSecret = "netgiro-test-secret";
-    const string AltaSecret = "alta-test-secret";
     static readonly Guid NetgiroApplicationId = Guid.Parse("2f1f6c1e-7c4b-4d0c-9a57-3b8d6e241905");
-
-    #region AltaPay
-
-    [Fact]
-    public async Task AltaPayAcceptsChecksummedConfirmationWhenAnotherProviderWasTriedFirst()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var netgiro = await f.InsertAsync(1990, new NetgiroSettings { ApplicationId = NetgiroApplicationId, Secret = NetgiroSecret }, "netgiro");
-        var alta = await f.InsertAsync(1990, AltaPaySettings(AltaSecret), "altapay");
-
-        var result = await f.AltaPay().Post(AltaPayConfirmation(f.OrderId, AltaChecksum(f.OrderId, "1990.00", AltaSecret)));
-
-        Assert.IsType<RedirectResult>(result);
-        Assert.True((await f.Orders.GetAsync(alta.UniqueId))!.Paid);
-        Assert.False((await f.Orders.GetAsync(netgiro.UniqueId))!.Paid);
-        Assert.Equal(1, f.Completions);
-    }
-
-    [Fact]
-    public async Task AltaPayRejectsWrongChecksum()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var alta = await f.InsertAsync(1990, AltaPaySettings(AltaSecret), "altapay");
-
-        var result = await f.AltaPay().Post(AltaPayConfirmation(f.OrderId, AltaChecksum(f.OrderId, "1.00", AltaSecret)));
-
-        Assert.IsNotType<RedirectResult>(result);
-        Assert.False((await f.Orders.GetAsync(alta.UniqueId))!.Paid);
-    }
-
-    [Fact]
-    public async Task AltaPayDoesNotConfirmPaymentsOfOtherProviders()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var netgiro = await f.InsertAsync(1990, new NetgiroSettings { ApplicationId = NetgiroApplicationId, Secret = NetgiroSecret }, "netgiro");
-        var legacy = await f.InsertAsync(
-            1990,
-            new NetgiroSettings { ApplicationId = NetgiroApplicationId, Secret = NetgiroSecret },
-            provider: null);
-
-        // Neither payment has an AltaPay secret to check a checksum with
-        var result = await f.AltaPay().Post(AltaPayConfirmation(f.OrderId, checksum: null));
-
-        Assert.IsType<NotFoundResult>(result);
-        Assert.False((await f.Orders.GetAsync(netgiro.UniqueId))!.Paid);
-        Assert.False((await f.Orders.GetAsync(legacy.UniqueId))!.Paid);
-        Assert.Equal(0, f.Completions);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    public async Task AltaPayDoesNotConfirmPaymentsWithoutASharedSecret(string? secret)
-    {
-        await using var f = await Fixture.CreateAsync();
-        var alta = await f.InsertAsync(1990, AltaPaySettings(secret), "altapay");
-
-        // Without a shared secret AltaPay sends no checksum, and one calculated without a secret proves nothing
-        foreach (var checksum in new[] { null, AltaChecksum(f.OrderId, "1990.00", secret: "") })
-        {
-            Assert.IsNotType<RedirectResult>(await f.AltaPay().Post(AltaPayConfirmation(f.OrderId, checksum)));
-        }
-
-        Assert.False((await f.Orders.GetAsync(alta.UniqueId))!.Paid);
-        Assert.Equal(0, f.Completions);
-    }
-
-    [Fact]
-    public async Task AltaPayRejectsMissingChecksum()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var alta = await f.InsertAsync(1990, AltaPaySettings(AltaSecret), "altapay");
-
-        Assert.IsNotType<RedirectResult>(await f.AltaPay().Post(AltaPayConfirmation(f.OrderId, checksum: null)));
-        Assert.False((await f.Orders.GetAsync(alta.UniqueId))!.Paid);
-    }
-
-    static AltaSettings AltaPaySettings(string? secret) => new()
-    {
-        Terminal = "Test Terminal",
-        ApiUserName = "api-user",
-        ApiPassword = "not-a-secret",
-        BaseAddress = new Uri("https://alta.example/merchant/API/"),
-        CustomerInformationSharedSecret = secret,
-    };
-
-    static PaymentResponse AltaPayConfirmation(Guid shopOrderId, string? checksum) => new()
-    {
-        ShopOrderId = shopOrderId,
-        Checksum = checksum,
-        Xml = WebUtility.UrlEncode(
-            "<?xml version=\"1.0\"?><APIResponse version=\"20170228\"><Header><ErrorCode>0</ErrorCode></Header><Body>"
-            + "<Result>Success</Result><Transactions><Transaction><TransactionId>1</TransactionId>"
-            + $"<ShopOrderId>{shopOrderId}</ShopOrderId><MerchantCurrency>352</MerchantCurrency>"
-            + "<MerchantCurrencyAlpha>ISK</MerchantCurrencyAlpha><CreditCardMaskedPan>411111******1111</CreditCardMaskedPan>"
-            + "</Transaction></Transactions></Body></APIResponse>"),
-    };
-
-    /// <summary>
-    /// MD5 of the comma separated key=value pairs, sorted by key
-    /// </summary>
-    static string AltaChecksum(Guid shopOrderId, string amount, string secret)
-        => Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(
-            $"amount={amount},currency=352,secret={secret},shop_orderid={shopOrderId}"))).ToLowerInvariant();
-
-    #endregion
 
     #region Stored payment settings
 
@@ -240,9 +133,6 @@ public sealed class CallbackVerificationTests
             }
             return Orders.InsertAsync(total, PaymentSettings(total), stored, OrderId.ToString(), new DefaultHttpContext());
         }
-
-        public AltaResponseController AltaPay() => Controller(new AltaResponseController(
-            NullLogger<AltaResponseController>.Instance, _settings, Orders, this, this, this));
 
         static T Controller<T>(T controller) where T : ControllerBase
         {

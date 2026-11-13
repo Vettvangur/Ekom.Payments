@@ -121,6 +121,24 @@ static class LegacyPaymentBridge
         return payment;
     }
 
+    /// <summary>
+    /// Finds a payment by the provider's own lookup key, for gateways that do not echo the payment id.
+    /// Falls back to the legacy row that kept the key, copying it to Ekom on first use.
+    /// </summary>
+    internal static async Task<OrderPayment?> GetOrImportByReferenceAsync(
+        IOrderPayments payments, IOrderService legacyOrders, string providerType, string providerReference)
+    {
+        if (string.IsNullOrWhiteSpace(providerReference)) return null;
+
+        var payment = await payments.GetByProviderReferenceAsync(providerType, providerReference).ConfigureAwait(false);
+        if (payment != null) return payment;
+
+        var legacy = await legacyOrders.GetByCustomAsync(providerReference).ConfigureAwait(false);
+        if (legacy == null) return null;
+
+        return await GetOrImportAsync(payments, legacyOrders, legacy.UniqueId).ConfigureAwait(false);
+    }
+
     /// <summary>One capture per payment: a gateway repeating its callback is stored once.</summary>
     internal static string CaptureKey(Guid paymentId) => $"{paymentId:N}:Captured";
 

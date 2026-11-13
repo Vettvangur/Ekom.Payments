@@ -50,4 +50,7 @@
         <PackageReference Include="Ekom.Payments.Core" Version="$(CorePackageVersion)" Condition="'$(UsePublishedCore)' == 'true'"/>
     </ItemGroup>
 
+    <ItemGroup>
+        <Compile Include="..\Shared\PaymentRowGuard.cs" Link="Shared\PaymentRowGuard.cs"/>
+    </ItemGroup>
 </Project>

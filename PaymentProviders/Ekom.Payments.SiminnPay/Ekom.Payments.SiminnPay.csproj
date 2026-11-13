@@ -75,4 +75,7 @@
       </EmbeddedResource>
     </ItemGroup>
 
+    <ItemGroup>
+        <Compile Include="..\Shared\PaymentRowGuard.cs" Link="Shared\PaymentRowGuard.cs"/>
+    </ItemGroup>
 </Project>

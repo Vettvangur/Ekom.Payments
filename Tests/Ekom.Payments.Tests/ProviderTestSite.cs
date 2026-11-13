@@ -72,9 +72,15 @@ sealed class ProviderTestSite : IUmbracoService, IHttpContextAccessor, IMailServ
         return http;
     }
 
+    /// <summary>Fills in a provider's settings the way its Umbraco payment provider node would.</summary>
+    public Action<object?>? ProviderNode { get; set; }
+
     public void PopulatePaymentProviderProperties(
         PaymentSettings settings, string ppNodeName, object? customProperties, IEnumerable<PropertyInfo>? customPropertyList)
-        => settings.PaymentProviderName = "Payment provider node";
+    {
+        settings.PaymentProviderName = "Payment provider node";
+        ProviderNode?.Invoke(customProperties);
+    }
 
     public Task SendAsync(MailMessage mailMessage) => Task.CompletedTask;
 }

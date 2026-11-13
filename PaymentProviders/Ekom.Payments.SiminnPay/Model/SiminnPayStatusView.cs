@@ -10,12 +10,12 @@ public class SiminnPayStatusView
     public DateTime Expires { get; set; }
     public Guid NetPaymentOrderId { get; set; }
 
-    public SiminnPayStatusView(OrderStatus order, GetPaymentOrderStatusResponse response)
+    public SiminnPayStatusView(Ekom.Models.Payments.OrderPayment payment, GetPaymentOrderStatusResponse response)
     {
         PayStatus = response.Status;
-        CreatedAt = order.Date;
-        Expires = order.Date.AddMinutes(1);
-        Amount = order.Amount;
-        NetPaymentOrderId = order.UniqueId;
+        CreatedAt = payment.CreatedUtc;
+        Expires = payment.CreatedUtc.AddMinutes(1);
+        Amount = payment.Amount;
+        NetPaymentOrderId = payment.PaymentId;
     }
 }

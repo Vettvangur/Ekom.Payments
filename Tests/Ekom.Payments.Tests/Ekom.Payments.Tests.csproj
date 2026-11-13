@@ -15,6 +15,8 @@
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.AsynchronousExample/Ekom.Payments.AsynchronousExample.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Borgun/Ekom.Payments.Borgun.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Netgiro/Ekom.Payments.Netgiro.csproj" />
+    <ProjectReference Include="../../PaymentProviders/Ekom.Payments.PayTrail/Ekom.Payments.PayTrail.csproj" />
+    <ProjectReference Include="../../PaymentProviders/Ekom.Payments.SiminnPay/Ekom.Payments.SiminnPay.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Straumur/Ekom.Payments.Straumur.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.TeyaConsumerloans/Ekom.Payments.TeyaConsumerloans.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Valitor/Ekom.Payments.Valitor.csproj" />
