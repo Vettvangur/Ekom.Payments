@@ -63,6 +63,7 @@ static class LegacyPaymentBridge
             PaymentId = order.UniqueId,
             Type = PaymentTransactionType.Captured,
             Amount = order.Amount,
+            IdempotencyKey = CaptureKey(order.UniqueId),
             MaskedCardNumber = paymentData?.CardNumber,
             PaymentMethod = paymentData?.PaymentMethod,
             RawData = IsJson(paymentData?.CustomData) ? paymentData!.CustomData : null,
@@ -70,40 +71,58 @@ static class LegacyPaymentBridge
         }).ConfigureAwait(false);
     }
 
-    /// <summary>Records a failed payment. Never throws: it runs while a provider is already handling an error.</summary>
-    internal static async Task FailedAsync(OrderStatus? order, Exception? exception)
-    {
-        var payments = Payments;
-        if (payments == null || order == null || order.Paid) return;
-
-        try
-        {
-            await EnsurePaymentAsync(payments, order).ConfigureAwait(false);
-            await payments.RecordAsync(new PaymentTransaction
-            {
-                PaymentId = order.UniqueId,
-                Type = PaymentTransactionType.Failed,
-                Amount = order.Amount,
-                Message = exception?.Message ?? "Payment verification failed",
-            }).ConfigureAwait(false);
-        }
-#pragma warning disable CA1031
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            Logger?.LogError(ex, "Failed to store payment failure. PaymentId: {PaymentId}", order.UniqueId);
-        }
-    }
-
     // Payments started before the upgrade have no Ekom payment row yet.
     static async Task EnsurePaymentAsync(IOrderPayments payments, OrderStatus order)
     {
         if (await payments.GetAsync(order.UniqueId).ConfigureAwait(false) != null) return;
+        await ImportAsync(payments, order).ConfigureAwait(false);
+    }
 
+    static Task<OrderPayment> ImportAsync(IOrderPayments payments, OrderStatus order)
+    {
         var settings = order.EkomPaymentSettings
             ?? throw new InvalidOperationException($"Payment {order.UniqueId} has no payment settings to find its order with.");
-        await payments.CreateAsync(settings, ProviderType(order), order.Amount, null, order.CustomData, null, order.UniqueId).ConfigureAwait(false);
+        object? providerData = null;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(order.EkomPaymentProviderData))
+                providerData = Newtonsoft.Json.Linq.JToken.Parse(order.EkomPaymentProviderData);
+        }
+        catch (Newtonsoft.Json.JsonException)
+        {
+        }
+        return payments.CreateAsync(settings, ProviderType(order), order.Amount, providerData, order.CustomData, null, order.UniqueId);
     }
+
+    /// <summary>
+    /// Finds a payment for a provider callback. A payment that was started before the upgrade only
+    /// exists as a legacy row: it is copied to Ekom on first use so its callback still completes the order.
+    /// </summary>
+    internal static async Task<OrderPayment?> GetOrImportAsync(IOrderPayments payments, IOrderService legacyOrders, Guid paymentId)
+    {
+        var payment = await payments.GetAsync(paymentId).ConfigureAwait(false);
+        if (payment != null) return payment;
+
+        var legacy = await legacyOrders.GetAsync(paymentId).ConfigureAwait(false);
+        // The legacy lookup also matches other columns; only the payment's own id counts.
+        if (legacy == null || legacy.UniqueId != paymentId) return null;
+
+        payment = await ImportAsync(payments, legacy).ConfigureAwait(false);
+        if (legacy.Paid)
+        {
+            await payments.RecordAsync(new PaymentTransaction
+            {
+                PaymentId = paymentId,
+                Type = PaymentTransactionType.Captured,
+                Amount = legacy.Amount,
+                IdempotencyKey = CaptureKey(paymentId),
+            }).ConfigureAwait(false);
+        }
+        return payment;
+    }
+
+    /// <summary>One capture per payment: a gateway repeating its callback is stored once.</summary>
+    internal static string CaptureKey(Guid paymentId) => $"{paymentId:N}:Captured";
 
     static async Task<PaymentData?> ReadPaymentDataAsync(Guid paymentId)
     {

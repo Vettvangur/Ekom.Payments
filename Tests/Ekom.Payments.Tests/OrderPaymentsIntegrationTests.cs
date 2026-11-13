@@ -21,7 +21,7 @@ public sealed class OrderPaymentsIntegrationTests
     [Fact]
     public async Task ExampleProviderRecordsCaptureWithProviderDetails()
     {
-        var payments = new FakeOrderPayments();
+        var payments = new InMemoryOrderPayments();
         var payment = await payments.CreateAsync(Settings(), "AsynchronousExample", 24990m);
         var controller = Controller(payments);
 
@@ -48,7 +48,7 @@ public sealed class OrderPaymentsIntegrationTests
     [Fact]
     public async Task ExampleProviderRecordsDeclineAndSendsCustomerToCancelUrl()
     {
-        var payments = new FakeOrderPayments();
+        var payments = new InMemoryOrderPayments();
         var payment = await payments.CreateAsync(Settings(), "AsynchronousExample", 24990m);
 
         var result = await Controller(payments).Post(new Response
@@ -65,7 +65,7 @@ public sealed class OrderPaymentsIntegrationTests
     [Fact]
     public async Task ExampleProviderRefusesPaymentsOfOtherProvidersAndUnknownReferences()
     {
-        var payments = new FakeOrderPayments();
+        var payments = new InMemoryOrderPayments();
         var foreign = await payments.CreateAsync(Settings(), "borgun", 24990m);
         var controller = Controller(payments);
 
@@ -76,9 +76,9 @@ public sealed class OrderPaymentsIntegrationTests
     }
 
     [Fact]
-    public async Task LegacyProviderSuccessAndFailureReachEkomThroughTheBridge()
+    public async Task LegacyProviderSuccessReachesEkomThroughTheBridgeOnce()
     {
-        var payments = new FakeOrderPayments();
+        var payments = new InMemoryOrderPayments();
         var previous = TryGetResolver();
         Ekom.Configuration.Resolver = new ServiceCollection().AddSingleton<IOrderPayments>(payments).BuildServiceProvider();
         try
@@ -92,8 +92,12 @@ public sealed class OrderPaymentsIntegrationTests
                 EkomPaymentProviderData = "{\"ekomPaymentProvider\":\"borgun\"}",
             };
 
-            // A payment started before the upgrade has no Ekom payment yet: the bridge creates it.
+            // An error raised by a legacy provider may be an unverifiable callback: it is not a failed payment.
             await Events.OnErrorAsync(this, new ErrorEventArgs { OrderStatus = row, Exception = new InvalidOperationException("Signature mismatch") });
+            Assert.Empty(payments.Payments);
+
+            // A payment started before the upgrade has no Ekom payment yet: the bridge creates it.
+            await Events.OnSuccessAsync(this, new SuccessEventArgs { OrderStatus = row });
             await Events.OnSuccessAsync(this, new SuccessEventArgs { OrderStatus = row });
 
             var payment = Assert.Single(payments.Payments);
@@ -101,9 +105,9 @@ public sealed class OrderPaymentsIntegrationTests
             Assert.Equal(settings.OrderUniqueId, payment.OrderUniqueId);
             Assert.Equal("IS-1042", payment.OrderNumber);
             Assert.Equal("borgun", payment.ProviderType);
-            Assert.Equal(new[] { PaymentTransactionType.Failed, PaymentTransactionType.Captured }, payments.Recorded.Select(x => x.Type));
-            Assert.Equal("Signature mismatch", payments.Recorded[0].Message);
-            Assert.All(payments.Recorded, x => Assert.Equal(row.UniqueId, x.PaymentId));
+            var captured = Assert.Single(payments.Recorded);
+            Assert.Equal(PaymentTransactionType.Captured, captured.Type);
+            Assert.Equal(row.UniqueId, captured.PaymentId);
         }
         finally
         {
@@ -153,49 +157,5 @@ public sealed class OrderPaymentsIntegrationTests
         public string From { get; set; } = string.Empty;
         public string To { get; set; } = string.Empty;
         public Task SendAsync(MailMessage mailMessage) => Task.CompletedTask;
-    }
-
-    sealed class FakeOrderPayments : IOrderPayments
-    {
-        public List<OrderPayment> Payments { get; } = [];
-        public List<PaymentTransaction> Recorded { get; } = [];
-
-        public Task<OrderPayment> CreateAsync(NewOrderPayment payment, CancellationToken ct = default)
-        {
-            var row = new OrderPayment
-            {
-                PaymentId = payment.PaymentId == Guid.Empty ? Guid.NewGuid() : payment.PaymentId,
-                OrderUniqueId = payment.OrderUniqueId,
-                OrderNumber = payment.OrderNumber,
-                AttemptId = payment.AttemptId,
-                ProviderName = payment.ProviderName,
-                ProviderType = payment.ProviderType,
-                Amount = payment.Amount,
-                Currency = payment.Currency,
-                Settings = payment.Settings,
-                ProviderData = payment.ProviderData,
-            };
-            Payments.Add(row);
-            return Task.FromResult(row);
-        }
-
-        public Task<PaymentRecordResult> RecordAsync(PaymentTransaction transaction, CancellationToken ct = default)
-        {
-            if (Payments.All(x => x.PaymentId != transaction.PaymentId)) throw new InvalidOperationException("Unknown payment.");
-            Recorded.Add(transaction);
-            return Task.FromResult(new PaymentRecordResult(true, PaymentStatus.Paid, null));
-        }
-
-        public Task<OrderPayment?> GetAsync(Guid paymentId, CancellationToken ct = default)
-            => Task.FromResult(Payments.FirstOrDefault(x => x.PaymentId == paymentId));
-
-        public Task<OrderPayment?> GetByProviderReferenceAsync(string providerName, string providerReference, CancellationToken ct = default)
-            => Task.FromResult<OrderPayment?>(null);
-
-        public Task<OrderPaymentsView> GetForOrderAsync(Guid orderId, CancellationToken ct = default)
-            => Task.FromResult(new OrderPaymentsView(null, [], []));
-
-        public Task<Guid?> FindOrderAsync(string paymentIdOrTransactionId, CancellationToken ct = default)
-            => Task.FromResult<Guid?>(null);
     }
 }

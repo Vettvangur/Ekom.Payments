@@ -1,6 +1,5 @@
 using Ekom.Payments.AltaPay;
 using Ekom.Payments.AltaPay.Model;
-using Ekom.Payments.Borgun;
 using Ekom.Payments.Helpers;
 using Ekom.Payments.Netgiro;
 using Ekom.Payments.Straumur;
@@ -21,8 +20,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Xunit;
-using BorgunPayment = Ekom.Payments.Borgun.Payment;
-using BorgunResponse = Ekom.Payments.Borgun.Response;
 using NetgiroPayment = Ekom.Payments.Netgiro.Payment;
 using NetgiroResponse = Ekom.Payments.Netgiro.Response;
 using StraumurResponse = Ekom.Payments.Straumur.Response;
@@ -38,7 +35,6 @@ namespace Ekom.Payments.Tests;
 public sealed class CallbackVerificationTests
 {
     const string NetgiroSecret = "netgiro-test-secret";
-    const string BorgunSecret = "borgun-test-secret";
     const string ValitorCode = "valitor-test-code";
     const string StraumurKey = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
     const string AltaSecret = "alta-test-secret";
@@ -257,97 +253,6 @@ public sealed class CallbackVerificationTests
 
         return response;
     }
-
-    #endregion
-
-    #region Borgun
-
-    [Fact]
-    public async Task BorgunAcceptsOrderHashForThePaymentsOrderId()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var payment = await f.RequestBorgunAsync(1990);
-
-        var response = BorgunConfirmation(payment.Order.UniqueId, payment.Form["orderid"], payment.Form["amount"]);
-
-        Assert.Equal("1990,00", payment.Form["amount"]);
-        Assert.IsType<OkResult>(await f.Borgun().Post(response));
-        Assert.True((await f.Orders.GetAsync(payment.Order.UniqueId))!.Paid);
-        Assert.Equal(1, f.Completions);
-    }
-
-    [Fact]
-    public async Task BorgunRejectsThePaymentRequestHashAsOrderHash()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var payment = await f.RequestBorgunAsync(1990);
-
-        // The payment request is signed for merchantid|returnurlsuccess|returnurlsuccessserver|orderid|amount|currency
-        var response = new BorgunResponse
-        {
-            Reference = payment.Order.UniqueId.ToString(),
-            Status = "OK",
-            OrderHash = payment.Form["checkhash"],
-            OrderId = string.Join('|',
-                payment.Form["merchantid"], payment.Form["returnurlsuccess"], payment.Form["returnurlsuccessserver"], payment.Form["orderid"]),
-        };
-
-        Assert.IsType<BadRequestResult>(await f.Borgun().Post(response));
-        Assert.False((await f.Orders.GetAsync(payment.Order.UniqueId))!.Paid);
-        Assert.Equal(0, f.Completions);
-    }
-
-    [Fact]
-    public async Task BorgunRejectsTheOrderHashOfAnotherPayment()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var paid = await f.RequestBorgunAsync(1990, orderNumber: "IS0001");
-        var unpaid = await f.RequestBorgunAsync(1990, orderNumber: "IS0002");
-
-        var response = BorgunConfirmation(unpaid.Order.UniqueId, paid.Form["orderid"], paid.Form["amount"]);
-
-        Assert.IsType<BadRequestResult>(await f.Borgun().Post(response));
-        Assert.False((await f.Orders.GetAsync(unpaid.Order.UniqueId))!.Paid);
-    }
-
-    [Fact]
-    public async Task BorgunDoesNotLogTheExpectedHash()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var payment = await f.RequestBorgunAsync(1990);
-        var expected = BorgunConfirmation(payment.Order.UniqueId, payment.Form["orderid"], payment.Form["amount"]).OrderHash;
-
-        var response = BorgunConfirmation(payment.Order.UniqueId, payment.Form["orderid"], payment.Form["amount"]);
-        response.OrderHash = new string('0', expected.Length);
-
-        var log = new RecordingLogger<BorgunResponseController>();
-        Assert.IsType<BadRequestResult>(await f.Borgun(log).Post(response));
-        Assert.NotEmpty(log.Messages);
-        Assert.DoesNotContain(log.Messages, x => x.Contains(expected, StringComparison.OrdinalIgnoreCase));
-    }
-
-    [Fact]
-    public async Task BorgunDoesNotConfirmPaymentsOfOtherProviders()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var netgiro = await f.RequestNetgiroAsync(1990);
-
-        var response = BorgunConfirmation(netgiro.Order.UniqueId, "IS0001", "1990,00");
-
-        Assert.IsType<NotFoundResult>(await f.Borgun().Post(response));
-        Assert.False((await f.Orders.GetAsync(netgiro.Order.UniqueId))!.Paid);
-    }
-
-    static BorgunResponse BorgunConfirmation(Guid reference, string orderId, string amount) => new()
-    {
-        Reference = reference.ToString(),
-        Status = "OK",
-        OrderId = orderId,
-        AuthorizationCode = "123456",
-        CreditCardNumber = "****1111",
-        // HMAC SHA256 of orderid|amount|currency
-        OrderHash = HmacHex(Encoding.UTF8.GetBytes(BorgunSecret), $"{orderId}|{amount}|ISK"),
-    };
 
     #endregion
 
@@ -693,18 +598,6 @@ public sealed class CallbackVerificationTests
                 NullLogger<NetgiroPayment>.Instance, _settings, this, Orders, this, _configuration));
         }
 
-        public Task<StartedPayment> RequestBorgunAsync(decimal total, string orderNumber = "")
-        {
-            var settings = PaymentSettings(total, orderNumber);
-            settings.CustomSettings[typeof(BorgunSettings)] = new BorgunSettings
-            {
-                MerchantId = "9275444", SecretCode = BorgunSecret, PaymentGatewayId = 16,
-                PaymentPageUrl = new Uri("https://borgun.example/securepay/"),
-            };
-            return RequestAsync(settings, new BorgunPayment(
-                NullLogger<BorgunPayment>.Instance, _settings, this, Orders, this, _configuration));
-        }
-
         public Task<StartedPayment> RequestValitorAsync(decimal total)
         {
             var settings = PaymentSettings(total);
@@ -743,9 +636,6 @@ public sealed class CallbackVerificationTests
 
         public NetgiroResponseController Netgiro() => Controller(new NetgiroResponseController(
             NullLogger<NetgiroResponseController>.Instance, _settings, Orders, this, this));
-
-        public BorgunResponseController Borgun(ILogger<BorgunResponseController>? logger = null) => Controller(new BorgunResponseController(
-            logger ?? NullLogger<BorgunResponseController>.Instance, _settings, Orders, this, this));
 
         public ValitorResponseController Valitor() => Controller(new ValitorResponseController(
             NullLogger<ValitorResponseController>.Instance, _settings, Orders, this, this));
