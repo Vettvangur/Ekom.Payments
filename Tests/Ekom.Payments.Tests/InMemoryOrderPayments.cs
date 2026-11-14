@@ -87,6 +87,16 @@ sealed class InMemoryOrderPayments : IOrderPayments
         return Task.FromResult(new OrderPaymentsView(attempts.FirstOrDefault(x => x.CapturedUtc != null), attempts, []));
     }
 
+    public async Task<IReadOnlyDictionary<Guid, OrderPaymentAttempt>> GetCurrentPaymentsAsync(IReadOnlyCollection<Guid> orderIds, CancellationToken ct = default)
+    {
+        var result = new Dictionary<Guid, OrderPaymentAttempt>();
+        foreach (var orderId in orderIds)
+        {
+            if ((await GetForOrderAsync(orderId, ct)).Current is { } current) result[orderId] = current;
+        }
+        return result;
+    }
+
     public Task<Guid?> FindOrderAsync(string paymentIdOrTransactionId, CancellationToken ct = default)
         => Task.FromResult<Guid?>(null);
 }
