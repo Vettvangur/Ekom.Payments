@@ -11,8 +11,7 @@
 ## Project layout
 - Ekom owns the payment contracts (`IPaymentProvider`, `PaymentSettings`, the provider registry, `IOrderPayments`). `Core/` is the library shared by the providers: crypto, CSP, form and mail helpers, `PaymentsCoreModule` (the `IPaymentModule` Ekom runs at startup), and the legacy payment model.
 - The legacy model (`OrderStatus`, `PaymentData`, `OrderService`, `EnsureTablesExist`, `LegacyPaymentBridge`) only exists so payments started before a site upgraded still complete: `LegacyPaymentBridge.GetOrImportAsync` copies a legacy row to Ekom when its callback arrives. Do not build new behaviour on it.
-- `PaymentProviders/Ekom.Payments.*` are provider packages that reference `Core/` and target `net8.0`. All providers in the solution record payments on the Ekom order through `IOrderPayments`; `Ekom.Payments.AsynchronousExample` is the reference. `Ekom.Payments.ValitorPay` targets `net7.0`, is not in the solution, has not been converted and does not build.
-- `PaymentProviders/ValitorPay/` is a separate legacy `Vettvangur.ValitorPay` client/test tree; it is not included in `Ekom.Payments.sln`.
+- `PaymentProviders/Ekom.Payments.*` are provider packages that reference `Core/` and target `net8.0`. All providers in the solution record payments on the Ekom order through `IOrderPayments`; `Ekom.Payments.AsynchronousExample` is the reference.
 
 - Provider tests use `InMemoryOrderPayments` and `ProviderTestSite` in `Tests/Ekom.Payments.Tests`; one test file per provider.
 
@@ -24,4 +23,3 @@
 - Package restore lock files exist per project via `RestorePackagesWithLockFile`; commit package lock changes only when dependency changes are intentional.
 - The root `.editorconfig` specifies CRLF, but OpenCode sessions must write LF-only files unless explicitly told otherwise.
 - `PaymentProviders/Directory.Build.props` sets `ExcludeNetFx=true`, so projects under `PaymentProviders/` that honor it skip .NET Framework targets.
-- `PaymentProviders/ValitorPay/ValitorPay.Tests/Config.cs` contains empty credential constants and does not compile as-is; do not treat that legacy test project as a normal validation target without fixing/providing credentials.

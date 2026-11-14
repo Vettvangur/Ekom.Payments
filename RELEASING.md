@@ -16,7 +16,7 @@ workflow, `publish-ekom-payments.yml`. Release groups are defined in
   `Ekom.Payments.Netgiro-v1.0.0` publishes only Netgiro.
 - All pending releases share one release PR, `chore: release main`. It lists every
   group with unreleased changes and bumps only those groups.
-- ValitorPay and AsynchronousExample remain outside the publishing list.
+- AsynchronousExample remains outside the publishing list.
 
 All groups move from the `0.2.x` line to `1.0.0` (see "Moving to 1.0.0" below).
 After that, release-please bumps the patch number only (`1.0.1`, `1.0.2`, ...),
