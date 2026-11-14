@@ -1,6 +1,6 @@
 using Ekom.Payments.Helpers;
 using Ekom.Payments.SiminnPay.Model;
-using LinqToDB;
+using Ekom.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -19,7 +19,7 @@ public class Payment : IPaymentProvider
 
     readonly ILogger<Payment> _logger;
     readonly IUmbracoService _uService;
-    readonly IOrderService _orderService;
+    readonly IOrderPayments _payments;
     readonly HttpContext _httpCtx;
 
     /// <summary>
@@ -28,12 +28,12 @@ public class Payment : IPaymentProvider
     public Payment(
         ILogger<Payment> logger,
         IUmbracoService uService,
-        IOrderService orderService,
+        IOrderPayments payments,
         IHttpContextAccessor httpContext)
     {
         _logger = logger;
         _uService = uService;
-        _orderService = orderService;
+        _payments = payments;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
     }
 
@@ -81,13 +81,13 @@ public class Payment : IPaymentProvider
 
             _logger.LogInformation("Síminn Pay Payment Request - Created payment order with order key: {OrderKey}", order.OrderKey);
 
-            // Persist in database and retrieve unique order id
-            var orderStatus = await _orderService.InsertAsync(
-                total,
+            // Store the payment on the Ekom order. Síminn Pay identifies it by its own order key in callbacks.
+            var payment = await _payments.CreateAsync(
                 paymentSettings,
-                siminnPaySettings,
-                order.OrderKey.ToString(),
-                _httpCtx
+                _ppNodeName,
+                total,
+                providerReference: order.OrderKey.ToString(),
+                httpContext: _httpCtx
             ).ConfigureAwait(false);
 
             if (order.Status == SiminnPayStatus.WaitingForNewAmount)
@@ -100,7 +100,8 @@ public class Payment : IPaymentProvider
                 return null;
             }
 
-            _logger.LogInformation("Síminn Pay Payment Request - Amount: {total} OrderId: {UniqueId}", total, orderStatus.UniqueId);
+            _logger.LogInformation("Síminn Pay Payment Request - " + PaymentLog.Template + " Amount: {Total} OrderKey: {OrderKey}",
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, total, order.OrderKey);
 
             var redirectUri = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, $"?siminnPayOrderKey={order.OrderKey}");
             _httpCtx.Response.Redirect(redirectUri.ToString());
@@ -108,11 +109,8 @@ public class Payment : IPaymentProvider
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Síminn Pay Payment Request - Payment Request Failed");
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
+            _logger.LogError(ex, "Síminn Pay Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }
     }

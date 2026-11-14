@@ -1,6 +1,6 @@
+using Ekom.Models.Payments;
 using Ekom.Payments.Helpers;
-using LinqToDB;
-using Microsoft.AspNetCore.Http;
+using Ekom.Services;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -9,17 +9,18 @@ using Newtonsoft.Json;
 namespace Ekom.Payments.AsynchronousExample;
 
 /// <summary>
-/// Receives a callback from AsynchronousExample when customer completes payment.
-/// Changes order status and optionally runs a custom callback provided by the application consuming this library.
+/// Receives a callback from the payment provider when a customer completes a payment.
+/// Records the outcome on the Ekom order; Ekom then updates the payment status and completes the checkout.
 /// </summary>
 [Route("ekom/payments/[controller]")]
 [ApiController]
 public class AsynchronousExampleResponseController : ControllerBase
 {
+    const string Provider = Payment._ppNodeName;
+
     readonly ILogger _logger;
     readonly PaymentsConfiguration _settings;
-    readonly IOrderService _orderService;
-    readonly IDatabaseFactory _dbFac;
+    readonly IOrderPayments _payments;
     readonly IMailService _mailSvc;
 
     /// <summary>
@@ -28,121 +29,97 @@ public class AsynchronousExampleResponseController : ControllerBase
     public AsynchronousExampleResponseController(
         ILogger<AsynchronousExampleResponseController> logger,
         PaymentsConfiguration settings,
-        IOrderService orderService,
-        IDatabaseFactory dbFac,
+        IOrderPayments payments,
         IMailService mailSvc)
     {
         _logger = logger;
         _settings = settings;
-        _orderService = orderService;
-        _dbFac = dbFac;
+        _payments = payments;
         _mailSvc = mailSvc;
     }
 
     /// <summary>
-    /// Receives a callback from AsynchronousExample when customer completes payment.
-    /// Changes order status and optionally runs a custom callback provided by the application consuming this library.
+    /// Receives a callback from the provider when a customer completes payment.
     /// </summary>
-    /// <param name="AsynchronousExampleResp">AsynchronousExample querystring parameters</param>
     [ApiExplorerSettings(IgnoreApi = true)]
     [HttpGet, HttpPost]
     [Route("")]
     public async Task<IActionResult> Post([FromQuery] Response AsynchronousExampleResp)
     {
-        _logger.LogInformation("AsynchronousExample Payment Response - Start");
-
-        _logger.LogDebug(JsonConvert.SerializeObject(AsynchronousExampleResp));
-
         try
         {
-            _logger.LogDebug("AsynchronousExample Payment Response - ModelState.IsValid");
-
-            if (!Guid.TryParse(AsynchronousExampleResp.ReferenceNumber, out var orderId))
+            if (!Guid.TryParse(AsynchronousExampleResp.ReferenceNumber, out var paymentId))
             {
                 return BadRequest();
             }
 
-            _logger.LogInformation("AsynchronousExample Payment Response - {OrderID}", orderId);
+            _logger.LogInformation("AsynchronousExample Payment Response - PaymentId: {PaymentId}", paymentId);
 
-            OrderStatus? order = await _orderService.GetAsync(orderId);
-            if (order == null)
+            OrderPayment? payment = await _payments.GetAsync(paymentId);
+            if (payment == null || !payment.BelongsTo(Provider))
             {
-                _logger.LogWarning("AsynchronousExample Payment Response - Unable to find order {OrderId}", orderId);
+                _logger.LogWarning("AsynchronousExample Payment Response - Unable to find payment. PaymentId: {PaymentId}", paymentId);
 
                 return NotFound();
             }
 
-            var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
-            var AsynchronousExampleSettings = JsonConvert.DeserializeObject<AsynchronousExampleSettings>(order.EkomPaymentProviderData);
+            var paymentSettings = payment.GetPaymentSettings()
+                ?? throw new InvalidOperationException($"Payment {paymentId} has no payment settings.");
+
+            // Every log line from here on leads with the order.
+            using var scope = _logger.BeginScope(new Dictionary<string, object?>
+            {
+                ["OrderNumber"] = payment.OrderNumber,
+                ["OrderUniqueId"] = payment.OrderUniqueId,
+                ["PaymentId"] = payment.PaymentId,
+                ["PaymentProvider"] = Provider,
+            });
 
             // perform payment provider specific security validation here
-            bool isValid = true;
+            bool isValid = !AsynchronousExampleResp.Failed;
 
             if (isValid)
             {
-                _logger.LogInformation("AsynchronousExample Payment Response - isValid");
-
-                if (!order.Paid)
+                // Recording is safe to repeat: the same callback delivered twice is stored once.
+                var result = await _payments.RecordAsync(new PaymentTransaction
                 {
-                    try
-                    {
-                        var paymentData = new PaymentData
-                        {
-                            Id = order.UniqueId,
-                            Date = DateTime.Now,
-                            CardNumber = AsynchronousExampleResp.CardNumberMasked,
-                            CustomData = JsonConvert.SerializeObject(AsynchronousExampleResp),
-                            Amount = order.Amount.ToString(),
-                        };
+                    PaymentId = payment.PaymentId,
+                    Type = PaymentTransactionType.Captured,
+                    TransactionId = AsynchronousExampleResp.TransactionNumber == 0 ? null : AsynchronousExampleResp.TransactionNumber.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    AuthorizationCode = AsynchronousExampleResp.AuthorizationNumber,
+                    CardBrand = AsynchronousExampleResp.CardType,
+                    MaskedCardNumber = AsynchronousExampleResp.CardNumberMasked,
+                    Details = [new PaymentDetail("reference", "Reference", AsynchronousExampleResp.ReferenceNumber, true)],
+                    RawData = JsonConvert.SerializeObject(AsynchronousExampleResp),
+                });
 
-                        using var db = _dbFac.GetDatabase();
-                        await db.InsertOrReplaceAsync(paymentData);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "AsynchronousExample Payment Response - Error saving payment data");
-                    }
-
-                    order.Paid = true;
-
-                    using (var db = _dbFac.GetDatabase())
-                    {
-                        await db.UpdateAsync(order);
-                    }
-
-                    await Events.OnSuccessAsync(this, new SuccessEventArgs
-                    {
-                        OrderStatus = order,
-                    });
-                    _logger.LogInformation($"AsynchronousExample Payment Response - SUCCESS - Order ID: {order.UniqueId}");
-                }
-                else
-                {
-                    _logger.LogInformation($"AsynchronousExample Payment Response - SUCCESS - Previously validated");
-                }
+                _logger.LogInformation(
+                    "AsynchronousExample Payment Response - SUCCESS - OrderNumber: {OrderNumber} OrderId: {OrderUniqueId} PaymentId: {PaymentId} FirstDelivery: {Recorded}",
+                    payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, result.Recorded);
 
                 var successUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl.ToString(), Request);
                 return Redirect(successUrl.ToString());
             }
-            else
-            {
-                _logger.LogInformation($"AsynchronousExample Payment Response - Verification Error - Order ID: {order.UniqueId}");
-                await Events.OnErrorAsync(this, new ErrorEventArgs
-                {
-                    OrderStatus = order,
-                });
 
-                var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl.ToString(), Request);
-                return Redirect(cancelUrl.ToString());
-            }
+            await _payments.RecordAsync(new PaymentTransaction
+            {
+                PaymentId = payment.PaymentId,
+                Type = PaymentTransactionType.Failed,
+                TransactionId = AsynchronousExampleResp.TransactionNumber == 0 ? null : AsynchronousExampleResp.TransactionNumber.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Message = string.IsNullOrWhiteSpace(AsynchronousExampleResp.Message) ? "Payment was declined" : AsynchronousExampleResp.Message,
+                RawData = JsonConvert.SerializeObject(AsynchronousExampleResp),
+            });
+
+            _logger.LogWarning(
+                "AsynchronousExample Payment Response - FAILED - OrderNumber: {OrderNumber} OrderId: {OrderUniqueId} PaymentId: {PaymentId}",
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
+
+            var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl.ToString(), Request);
+            return Redirect(cancelUrl.ToString());
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "AsynchronousExample Payment Response - Failed");
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
 
             if (_settings.SendEmailAlerts)
             {

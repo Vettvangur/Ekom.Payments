@@ -6,14 +6,17 @@ workflow, `publish-ekom-payments.yml`. Release groups are defined in
 
 ## Independent versions
 
-- `Ekom.Payments` groups Core, AspNetCore, U10, U17, U18, and U19. These six packages
-  share `Payments.Version.props` and use tags such as `Ekom.Payments-v1.0.0`.
+- `Ekom.Payments` is the Core package. It takes its version from `Payments.Version.props`
+  and uses tags such as `Ekom.Payments-v1.0.0`. The AspNetCore, U10, U17, U18 and U19
+  packages no longer exist: Ekom owns what they did.
+- Every package requires the Ekom version in `EkomVersion` (`Directory.Build.props`).
+  Release Ekom first, then set `EkomVersion` to that release before publishing here.
 - Each of the eight published providers has its own version in its project file,
   release-please manifest entry, changelog, and tag. For example,
   `Ekom.Payments.Netgiro-v1.0.0` publishes only Netgiro.
 - All pending releases share one release PR, `chore: release main`. It lists every
   group with unreleased changes and bumps only those groups.
-- ValitorPay and AsynchronousExample remain outside the publishing list.
+- AsynchronousExample remains outside the publishing list.
 
 All groups move from the `0.2.x` line to `1.0.0` (see "Moving to 1.0.0" below).
 After that, release-please bumps the patch number only (`1.0.1`, `1.0.2`, ...),

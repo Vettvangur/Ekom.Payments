@@ -1,3 +1,4 @@
+using Ekom.Models.Payments;
 using Ekom.Payments.TeyaConsumerloans;
 using Ekom.Payments.TeyaConsumerloans.Models;
 using LinqToDB;
@@ -17,6 +18,10 @@ using LoanEvents = Ekom.Payments.TeyaConsumerloans.Events;
 
 namespace Ekom.Payments.Tests;
 
+/// <summary>
+/// Teya Consumer Loans is monitored by polling. The outcome is recorded on the Ekom order's payment, and a
+/// payment with nothing recorded since its request is what gets picked up again after a restart.
+/// </summary>
 public sealed class TeyaConsumerloansTests
 {
     [Theory]
@@ -32,44 +37,39 @@ public sealed class TeyaConsumerloansTests
     public async Task LoanCanCompleteAfterTokenStartWindowHasElapsed()
     {
         await using var f = await Fixture.CreateAsync();
-        var completions = 0;
-        Task Complete(object _, SuccessEventArgs e) { completions++; return Task.CompletedTask; }
-        Events.SuccessAsync += Complete;
-        try
-        {
-            var polling = f.PollAsync();
-            await f.Clock.WaitForPollDelayAsync();
-            f.Http.Status = "SUCCESS";
-            f.Clock.Advance(TimeSpan.FromMinutes(6));
-            await polling.WaitAsync(TimeSpan.FromSeconds(10));
+        var polling = f.PollAsync();
+        await f.Clock.WaitForPollDelayAsync();
+        f.Http.Status = "SUCCESS";
+        f.Clock.Advance(TimeSpan.FromMinutes(6));
+        await polling.WaitAsync(TimeSpan.FromSeconds(10));
 
-            Assert.True((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
-            Assert.Equal(1, f.Http.Validations);
-            Assert.Equal(1, completions);
-            Assert.Contains(f.Activity, x => x.Message.Contains("INPROGRESS -> SUCCESS", StringComparison.Ordinal));
-            Assert.Contains(f.Activity, x => x.IsSuccess);
-            Assert.All(f.Activity, x => Assert.Equal(f.Request.OrderId, x.PaymentId));
-            Assert.All(f.Activity, x => Assert.Equal(f.OrderId, x.PaymentSettings.OrderUniqueId));
-            Assert.DoesNotContain(f.Activity, x => x.Message.Contains(f.Request.Token, StringComparison.Ordinal));
-            Assert.Equal($"{f.Request.RedirectUrl}&token={f.Request.Token}", f.Http.RedirectUrl);
-        }
-        finally
-        {
-            Events.SuccessAsync -= Complete;
-        }
+        var capture = Assert.Single(f.Payments.Recorded);
+        Assert.Equal(PaymentTransactionType.Captured, capture.Type);
+        Assert.Equal(f.Request.PaymentId, capture.PaymentId);
+        Assert.Equal("1234", capture.TransactionId);
+        Assert.Equal("5678", capture.AuthorizationCode);
+        Assert.Equal(1, f.Http.Validations);
+        Assert.Contains(f.Activity, x => x.Message.Contains("INPROGRESS -> SUCCESS", StringComparison.Ordinal));
+        Assert.Contains(f.Activity, x => x.IsSuccess);
+        Assert.All(f.Activity, x => Assert.Equal(f.Request.PaymentId, x.PaymentId));
+        Assert.All(f.Activity, x => Assert.Equal(f.OrderId, x.PaymentSettings.OrderUniqueId));
+        Assert.DoesNotContain(f.Activity, x => x.Message.Contains(f.Request.Token, StringComparison.Ordinal));
+        Assert.Equal($"{f.Request.RedirectUrl}&token={f.Request.Token}", f.Http.RedirectUrl);
     }
 
     [Theory]
-    [InlineData("CANCELED")]
-    [InlineData("FAILED")]
-    [InlineData("TOKENEXPIRED")]
-    [InlineData("PROGRESSEXPIRED")]
-    public async Task TerminalStatusStopsWithoutValidatingOrMarkingPaymentPaid(string status)
+    [InlineData("CANCELED", PaymentTransactionType.Cancelled)]
+    [InlineData("FAILED", PaymentTransactionType.Failed)]
+    [InlineData("TOKENEXPIRED", PaymentTransactionType.Failed)]
+    [InlineData("PROGRESSEXPIRED", PaymentTransactionType.Failed)]
+    public async Task TerminalStatusIsRecordedWithoutValidatingOrCapturingThePayment(string status, PaymentTransactionType expected)
     {
         await using var f = await Fixture.CreateAsync();
         f.Http.Status = status;
         await f.PollAsync();
-        Assert.False((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
+        var outcome = Assert.Single(f.Payments.Recorded);
+        Assert.Equal(expected, outcome.Type);
+        Assert.False(f.Captured);
         Assert.Equal(0, f.Http.Validations);
         Assert.Contains(f.Activity, x => x.Message.EndsWith($"-> {status}.", StringComparison.Ordinal) && x.Level == LogLevel.Warning);
     }
@@ -90,7 +90,7 @@ public sealed class TeyaConsumerloansTests
         f.Http.Status = "SUCCESS";
         f.Clock.Advance(TeyaConsumerloansPollingService.PollingInterval);
         await polling.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.True((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
+        Assert.True(f.Captured);
         Assert.Equal(1, f.Http.Validations);
         Assert.Contains(f.Activity, x => x.Message.StartsWith("Temporary status check failure", StringComparison.Ordinal));
         Assert.Contains(f.Activity, x => x.Message == "Payment status checks resumed.");
@@ -105,17 +105,19 @@ public sealed class TeyaConsumerloansTests
         Assert.Equal(1, f.Http.StatusChecks);
         Assert.Equal(0, f.Http.Validations);
         Assert.Contains(f.Activity, x => x.Level == LogLevel.Error);
+        Assert.Empty(f.Payments.Recorded);
     }
 
     [Fact]
-    public async Task TimeoutIsLoggedWithoutTreatingTheOrderAsPaid()
+    public async Task TimeoutIsLoggedWithoutRecordingAnOutcome()
     {
         await using var f = await Fixture.CreateAsync();
         var polling = f.PollAsync();
         await f.Clock.WaitForPollDelayAsync();
         f.Clock.Advance(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(30));
         await polling.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.False((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
+        // Nothing is known yet: the payment stays open and is checked once more after the next restart.
+        Assert.Empty(f.Payments.Recorded);
         Assert.Equal(0, f.Http.Validations);
         Assert.Contains(f.Activity, x => x.Level == LogLevel.Warning && x.Message.Contains("timed out", StringComparison.Ordinal));
     }
@@ -134,6 +136,7 @@ public sealed class TeyaConsumerloansTests
         Assert.Equal(0, f.Http.Validations);
         Assert.Contains(f.Activity, x => x.Message.Contains("shutting down", StringComparison.Ordinal));
         Assert.DoesNotContain(f.Activity, x => x.Message.StartsWith("Temporary status check failure", StringComparison.Ordinal));
+        Assert.Single(await f.RecoveryAsync());
     }
 
     [Fact]
@@ -154,26 +157,17 @@ public sealed class TeyaConsumerloansTests
     }
 
     [Fact]
-    public async Task ValidationFailureUsesExistingErrorEventAndIsNotAutomaticallyRetried()
+    public async Task ValidationFailureIsReportedAndNotAutomaticallyRetried()
     {
         await using var f = await Fixture.CreateAsync();
         f.Http.Status = "SUCCESS";
         f.Http.FailValidation = true;
-        var errors = 0;
-        Task Error(object _, ErrorEventArgs e) { errors++; return Task.CompletedTask; }
-        Events.ErrorAsync += Error;
-        try
-        {
-            await f.PollAsync();
-            Assert.Equal(1, f.Http.Validations);
-            Assert.Equal(1, errors);
-            Assert.False((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
-            Assert.Contains(f.Activity, x => x.Level == LogLevel.Error);
-        }
-        finally
-        {
-            Events.ErrorAsync -= Error;
-        }
+
+        await f.PollAsync();
+
+        Assert.Equal(1, f.Http.Validations);
+        Assert.Empty(f.Payments.Recorded);
+        Assert.Contains(f.Activity, x => x.Level == LogLevel.Error);
     }
 
     [Fact]
@@ -193,41 +187,31 @@ public sealed class TeyaConsumerloansTests
     }
 
     [Fact]
-    public async Task CompletionCallbackFailureIsReportedWithoutRevalidatingOrReplayingIt()
+    public async Task CheckoutCompletionFailureIsReportedWithoutRevalidatingOrCapturingAgain()
     {
         await using var f = await Fixture.CreateAsync();
         f.Http.Status = "SUCCESS";
-        var completions = 0;
-        Task Complete(object _, SuccessEventArgs e)
-        {
-            completions++;
-            throw new InvalidOperationException("Simulated checkout failure");
-        }
-        Events.SuccessAsync += Complete;
-        try
-        {
-            await f.PollAsync();
-            Assert.Equal(1, f.Http.Validations);
-            Assert.Equal(1, completions);
-            Assert.True((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
-            Assert.Contains(f.Activity, x => x.Level == LogLevel.Error);
-        }
-        finally
-        {
-            Events.SuccessAsync -= Complete;
-        }
+        // Ekom stores the capture, then completing the order's checkout fails.
+        f.Payments.FailCheckoutCompletion = true;
+
+        await f.PollAsync();
+
+        Assert.Equal(1, f.Http.Validations);
+        Assert.Single(f.Payments.Captures(f.Request.PaymentId));
+        Assert.Contains(f.Activity, x => x.Level == LogLevel.Error);
+        // The capture is on record, so the loan is not validated again after a restart.
+        Assert.Empty(await f.RecoveryAsync());
     }
 
     [Fact]
-    public async Task PreviouslyPaidAttemptIsNotValidatedAgain()
+    public async Task PreviouslyCapturedPaymentIsNotValidatedAgain()
     {
         await using var f = await Fixture.CreateAsync();
-        var order = (await f.Orders.GetAsync(f.Request.OrderId))!;
-        order.Paid = true;
-        await f.Orders.UpdateAsync(order);
+        await f.Payments.RecordAsync(new Ekom.Services.PaymentTransaction { PaymentId = f.Request.PaymentId, Type = PaymentTransactionType.Captured });
         f.Http.Status = "SUCCESS";
         await f.PollAsync();
         Assert.Equal(0, f.Http.Validations);
+        Assert.Single(f.Payments.Captures(f.Request.PaymentId));
     }
 
     [Fact]
@@ -240,7 +224,7 @@ public sealed class TeyaConsumerloansTests
         {
             f.Http.Status = "SUCCESS";
             await f.PollAsync();
-            Assert.True((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
+            Assert.True(f.Captured);
         }
         finally
         {
@@ -252,8 +236,8 @@ public sealed class TeyaConsumerloansTests
     public async Task RestartResumesOnlyTheRemainingOriginalWindow()
     {
         await using var f = await Fixture.CreateAsync();
-        await f.SetAgeAsync(TimeSpan.FromMinutes(6));
-        var request = Assert.Single(await f.Service.GetRecoveryRequestsAsync());
+        f.SetAge(TimeSpan.FromMinutes(6));
+        var request = Assert.Single(await f.RecoveryAsync());
         Assert.Equal(f.Clock.GetUtcNow().AddMinutes(4).AddSeconds(30), request.RecoveryDeadlineUtc);
         var polling = f.Service.PollOrderAsync(request, CancellationToken.None, f.Clock);
         await f.Clock.WaitForPollDelayAsync();
@@ -261,7 +245,8 @@ public sealed class TeyaConsumerloansTests
         await polling.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Contains(f.Activity, x => x.Message.Contains("270 seconds remaining", StringComparison.Ordinal));
         Assert.Contains(f.Activity, x => x.Message.Contains("timed out", StringComparison.Ordinal));
-        Assert.Equal(TeyaConsumerloansPollingService.RecoveryPending, await f.RecoveryStateAsync());
+        // Still undecided: it gets its single overdue check after the next restart.
+        Assert.Single(await f.RecoveryAsync());
     }
 
     [Fact]
@@ -273,7 +258,7 @@ public sealed class TeyaConsumerloansTests
         f.Http.Status = "SUCCESS";
         f.Clock.Advance(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(15));
         await polling.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.True((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
+        Assert.True(f.Captured);
         Assert.Equal(1, f.Http.Validations);
         Assert.DoesNotContain(f.Activity, x => x.Message.Contains("timed out", StringComparison.Ordinal));
     }
@@ -282,8 +267,8 @@ public sealed class TeyaConsumerloansTests
     public async Task RestartDuringBufferResumesPollingForOnlyTheRemainingBuffer()
     {
         await using var f = await Fixture.CreateAsync();
-        await f.SetAgeAsync(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(15));
-        var request = Assert.Single(await f.Service.GetRecoveryRequestsAsync());
+        f.SetAge(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(15));
+        var request = Assert.Single(await f.RecoveryAsync());
         Assert.Equal(f.Clock.GetUtcNow().AddSeconds(15), request.RecoveryDeadlineUtc);
         var polling = f.Service.PollOrderAsync(request, CancellationToken.None, f.Clock);
         await f.Clock.WaitForPollDelayAsync();
@@ -292,37 +277,36 @@ public sealed class TeyaConsumerloansTests
         Assert.Contains(f.Activity, x => x.Message.Contains("15 seconds remaining", StringComparison.Ordinal));
         Assert.Contains(f.Activity, x => x.Message.Contains("timed out", StringComparison.Ordinal));
         Assert.DoesNotContain(f.Activity, x => x.Message.Contains("checking the loan status once", StringComparison.Ordinal));
-        Assert.Equal(TeyaConsumerloansPollingService.RecoveryPending, await f.RecoveryStateAsync());
+        Assert.Single(await f.RecoveryAsync());
     }
 
     [Fact]
     public async Task RecoveryDeadlineIsRecheckedWhenAnAttemptWaitedInTheQueue()
     {
         await using var f = await Fixture.CreateAsync();
-        await f.SetAgeAsync(TimeSpan.FromMinutes(6));
-        var request = Assert.Single(await f.Service.GetRecoveryRequestsAsync());
+        f.SetAge(TimeSpan.FromMinutes(6));
+        var request = Assert.Single(await f.RecoveryAsync());
         f.Clock.Advance(TimeSpan.FromMinutes(5));
         await f.Service.PollOrderAsync(request, CancellationToken.None, f.Clock);
         Assert.Equal(1, f.Http.StatusChecks);
         Assert.Equal(0, f.Http.Validations);
         Assert.Contains(f.Activity, x => x.Message.Contains("manual review", StringComparison.Ordinal));
-        Assert.Empty(await f.Service.GetRecoveryRequestsAsync());
+        Assert.Empty(await f.RecoveryAsync());
     }
 
     [Fact]
     public async Task LoanCompletedWhileSiteWasDownIsValidatedOnceAfterItsWindow()
     {
         await using var f = await Fixture.CreateAsync();
-        await f.SetAgeAsync(TimeSpan.FromMinutes(30));
+        f.SetAge(TimeSpan.FromMinutes(30));
         f.Http.Status = "SUCCESS";
-        var request = Assert.Single(await f.Service.GetRecoveryRequestsAsync());
+        var request = Assert.Single(await f.RecoveryAsync());
         await f.Service.PollOrderAsync(request, CancellationToken.None, f.Clock);
         Assert.Equal(1, f.Http.StatusChecks);
         Assert.Equal(1, f.Http.Validations);
         Assert.Equal($"{f.Request.RedirectUrl}&token={f.Request.Token}", f.Http.RedirectUrl);
-        Assert.True((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
-        Assert.Equal(TeyaConsumerloansPollingService.RecoveryFinished, await f.RecoveryStateAsync());
-        Assert.Empty(await f.Service.GetRecoveryRequestsAsync());
+        Assert.True(f.Captured);
+        Assert.Empty(await f.RecoveryAsync());
     }
 
     [Theory]
@@ -333,34 +317,36 @@ public sealed class TeyaConsumerloansTests
     public async Task OverdueTerminalAttemptIsCheckedOnceAndNotRecoveredAgain(string status)
     {
         await using var f = await Fixture.CreateAsync();
-        await f.SetAgeAsync(TimeSpan.FromMinutes(30));
+        f.SetAge(TimeSpan.FromMinutes(30));
         f.Http.Status = status;
-        var request = Assert.Single(await f.Service.GetRecoveryRequestsAsync());
+        var request = Assert.Single(await f.RecoveryAsync());
         await f.Service.PollOrderAsync(request, CancellationToken.None, f.Clock);
         Assert.Equal(1, f.Http.StatusChecks);
         Assert.Equal(0, f.Http.Validations);
-        Assert.False((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
-        Assert.Equal(TeyaConsumerloansPollingService.RecoveryFinished, await f.RecoveryStateAsync());
-        Assert.Empty(await f.Service.GetRecoveryRequestsAsync());
+        Assert.False(f.Captured);
+        Assert.Single(f.Payments.Recorded);
+        Assert.Empty(await f.RecoveryAsync());
     }
 
     [Theory]
     [InlineData("CREATED")]
     [InlineData("INPROGRESS")]
     [InlineData("PENDING")]
-    public async Task OverdueNonFinalAttemptGetsOneCheckAndAManualReviewMessage(string status)
+    public async Task OverdueNonFinalAttemptGetsOneCheckAndANoteAskingForManualReview(string status)
     {
         await using var f = await Fixture.CreateAsync();
-        await f.SetAgeAsync(TimeSpan.FromMinutes(30));
+        f.SetAge(TimeSpan.FromMinutes(30));
         f.Http.Status = status;
-        var request = Assert.Single(await f.Service.GetRecoveryRequestsAsync());
+        var request = Assert.Single(await f.RecoveryAsync());
         await f.Service.PollOrderAsync(request, CancellationToken.None, f.Clock);
         Assert.Equal(1, f.Http.StatusChecks);
         Assert.Equal(0, f.Http.Validations);
-        Assert.False((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
+        // Neither paid nor failed: a note on the payment tells staff to check the loan with Teya.
+        var note = Assert.Single(f.Payments.Recorded);
+        Assert.Equal(PaymentTransactionType.Note, note.Type);
+        Assert.Contains(status, note.Message!, StringComparison.Ordinal);
         Assert.Contains(f.Activity, x => x.Level == LogLevel.Warning && x.Message.Contains("manual review", StringComparison.Ordinal));
-        Assert.Equal(TeyaConsumerloansPollingService.RecoveryFinished, await f.RecoveryStateAsync());
-        Assert.Empty(await f.Service.GetRecoveryRequestsAsync());
+        Assert.Empty(await f.RecoveryAsync());
     }
 
     [Theory]
@@ -370,110 +356,112 @@ public sealed class TeyaConsumerloansTests
     public async Task FailedOverdueCheckIsNotRetriedImmediatelyButRemainsAvailableForNextRestart(string failure)
     {
         await using var f = await Fixture.CreateAsync();
-        await f.SetAgeAsync(TimeSpan.FromMinutes(30));
+        f.SetAge(TimeSpan.FromMinutes(30));
         f.Http.StatusFailure = failure;
-        var request = Assert.Single(await f.Service.GetRecoveryRequestsAsync());
+        var request = Assert.Single(await f.RecoveryAsync());
         await f.Service.PollOrderAsync(request, CancellationToken.None, f.Clock);
         Assert.Equal(1, f.Http.StatusChecks);
         Assert.Equal(0, f.Http.Validations);
-        Assert.Equal(TeyaConsumerloansPollingService.RecoveryPending, await f.RecoveryStateAsync());
-        var retry = Assert.Single(await f.Service.GetRecoveryRequestsAsync());
+        var retry = Assert.Single(await f.RecoveryAsync());
         f.Http.StatusFailure = null;
         f.Http.Status = "SUCCESS";
         await f.Service.PollOrderAsync(retry, CancellationToken.None, f.Clock);
         Assert.Equal(2, f.Http.StatusChecks);
-        Assert.True((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
+        Assert.True(f.Captured);
     }
 
     [Fact]
-    public async Task RecoveryDoesNotImportUnmarkedHistoricalAttempts()
-    {
-        await using var f = await Fixture.CreateAsync(marked: false);
-        await f.SetAgeAsync(TimeSpan.FromMinutes(30));
-        Assert.Empty(await f.Service.GetRecoveryRequestsAsync());
-    }
-
-    [Fact]
-    public async Task RecoverySkipsPaidAttemptsEvenWhenSuccessCallbackPreviouslyFailed()
+    public async Task RecoveryLeavesAttemptsOlderThanAWeekAlone()
     {
         await using var f = await Fixture.CreateAsync();
-        f.Http.Status = "SUCCESS";
-        Task Fail(object _, SuccessEventArgs e) => throw new InvalidOperationException("Simulated callback failure");
-        Events.SuccessAsync += Fail;
-        try
-        {
-            await f.PollAsync();
-        }
-        finally
-        {
-            Events.SuccessAsync -= Fail;
-        }
-        Assert.True((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
-        Assert.Empty(await f.Service.GetRecoveryRequestsAsync());
+        f.SetAge(TeyaConsumerloansPollingService.RecoveryLookback + TimeSpan.FromMinutes(1));
+        Assert.Empty(await f.RecoveryAsync());
     }
 
     [Fact]
-    public async Task AnInvalidRecoveryRecordDoesNotPreventOtherAttemptsFromResuming()
+    public async Task APaymentThatIsNotAReadableTeyaLoanDoesNotPreventOtherAttemptsFromResuming()
     {
         await using var f = await Fixture.CreateAsync();
-        await f.SetAgeAsync(TimeSpan.FromMinutes(30));
-        var original = (await f.Orders.GetAsync(f.Request.OrderId))!;
-        var invalid = await f.Orders.InsertAsync(100, original.EkomPaymentSettings, new { }, "invalid-token", new DefaultHttpContext());
-        var request = Assert.Single(await f.Service.GetRecoveryRequestsAsync());
-        Assert.Equal(original.UniqueId, request.OrderId);
-        Assert.NotEqual(invalid.UniqueId, request.OrderId);
+        f.SetAge(TimeSpan.FromMinutes(30));
+        var invalid = await f.Payments.CreateAsync(f.PaymentSettings(), "teyaConsumerloans", 100m, new { }, createdUtc: f.Clock.GetUtcNow().UtcDateTime);
+        var unreadable = await f.Payments.CreateAsync(f.PaymentSettings(), "teyaConsumerloans", 100m, createdUtc: f.Clock.GetUtcNow().UtcDateTime);
+        unreadable.ProviderData = "not json";
+
+        var request = Assert.Single(await f.RecoveryAsync());
+
+        Assert.Equal(f.Request.PaymentId, request.PaymentId);
+        Assert.NotEqual(invalid.PaymentId, request.PaymentId);
     }
 
     [Fact]
     public async Task RecoveryChecksEveryAttemptNotJustTheNewestForAnOrder()
     {
         await using var f = await Fixture.CreateAsync();
-        await f.SetAgeAsync(TimeSpan.FromMinutes(30));
-        var original = (await f.Orders.GetAsync(f.Request.OrderId))!;
+        f.SetAge(TimeSpan.FromMinutes(30));
         var nextToken = Guid.NewGuid().ToString("N");
-        var later = await f.Orders.InsertAsync(100, original.EkomPaymentSettings, f.Request.Settings, nextToken, new DefaultHttpContext());
-        later = (await f.Orders.GetAsync(later.UniqueId))!;
-        later.Date = original.Date.AddMinutes(1);
-        await f.Orders.UpdateAsync(later);
+        var later = await f.Payments.CreateAsync(f.PaymentSettings(), "teyaConsumerloans", 100m,
+            TeyaConsumerloansPollingService.StoredPayment(f.Request.Settings, nextToken),
+            createdUtc: f.Clock.GetUtcNow().UtcDateTime - TimeSpan.FromMinutes(29));
         f.Http.StatusByToken[f.Request.Token] = "SUCCESS";
         f.Http.StatusByToken[nextToken] = "PROGRESSEXPIRED";
-        var requests = await f.Service.GetRecoveryRequestsAsync();
+        var requests = await f.RecoveryAsync();
         Assert.Equal(2, requests.Count);
         foreach (var request in requests)
         {
             await f.Service.PollOrderAsync(request, CancellationToken.None, f.Clock);
         }
-        Assert.True((await f.Orders.GetAsync(original.UniqueId))!.Paid);
-        Assert.False((await f.Orders.GetAsync(later.UniqueId))!.Paid);
+        Assert.True(f.Captured);
+        Assert.Empty(f.Payments.Captures(later.PaymentId));
+        Assert.Contains(f.Payments.Recorded, x => x.PaymentId == later.PaymentId && x.Type == PaymentTransactionType.Failed);
         Assert.Equal(1, f.Http.Validations);
-        Assert.Empty(await f.Service.GetRecoveryRequestsAsync());
+        Assert.Empty(await f.RecoveryAsync());
     }
 
     [Fact]
-    public async Task StartupRecoveryWaitsUntilApplicationEventSubscribersAreReady()
+    public async Task StartupRecoveryWaitsUntilTheApplicationHasStarted()
     {
         await using var f = await Fixture.CreateAsync();
-        await f.SetAgeAsync(TimeSpan.FromMinutes(30));
+        // The hosted service runs on the system clock.
+        f.Payments.Payments[0].CreatedUtc = DateTime.UtcNow - TimeSpan.FromMinutes(30);
         using var ready = new CancellationTokenSource();
         f.Service.ApplicationStarted = ready.Token;
         f.Http.Status = "SUCCESS";
-        var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task Complete(object _, SuccessEventArgs e) { delivered.TrySetResult(); return Task.CompletedTask; }
-        Events.SuccessAsync += Complete;
         try
         {
             await f.Service.StartAsync(CancellationToken.None);
             Assert.Equal(0, f.Http.StatusChecks);
             ready.Cancel();
-            await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            for (var i = 0; i < 200 && !f.Captured; i++)
+            {
+                await Task.Delay(50);
+            }
         }
         finally
         {
             await f.Service.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
-            Events.SuccessAsync -= Complete;
         }
         Assert.Equal(1, f.Http.StatusChecks);
-        Assert.True((await f.Orders.GetAsync(f.Request.OrderId))!.Paid);
+        Assert.True(f.Captured);
+    }
+
+    [Fact]
+    public async Task LoanStartedBeforeTheUpgradeIsCopiedFromItsLegacyRowAndResumed()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var token = Guid.NewGuid().ToString("N");
+        var marked = f.PaymentSettings();
+        marked.OrderCustomData[TeyaConsumerloansPollingService.RecoveryKey] = TeyaConsumerloansPollingService.RecoveryPending;
+        var legacy = await f.LegacyOrders.InsertAsync(100, marked, f.Request.Settings, token, new DefaultHttpContext());
+        // A legacy row that was never marked for monitoring is history, not a loan in progress.
+        await f.LegacyOrders.InsertAsync(100, f.PaymentSettings(), f.Request.Settings, "old-token", new DefaultHttpContext());
+
+        var requests = await f.RecoveryAsync();
+
+        var resumed = Assert.Single(requests, x => x.PaymentId == legacy.UniqueId);
+        Assert.Equal(token, resumed.Token);
+        Assert.Equal(marked.SuccessUrl, resumed.RedirectUrl);
+        Assert.Equal(2, f.Payments.Payments.Count);
+        Assert.Equal(f.OrderId, f.Payments.Payments.Single(x => x.PaymentId == legacy.UniqueId).OrderUniqueId);
     }
 
     [Fact]
@@ -488,7 +476,17 @@ public sealed class TeyaConsumerloansTests
         TeyaConsumerloansPollingService.EnableRecovery(settings, redirectUrl);
         Assert.Equal(redirectUrl, settings.SuccessUrl);
         Assert.Equal("existing-attempt", settings.OrderCustomData["ekomPaymentAttemptId"]);
-        Assert.Equal(TeyaConsumerloansPollingService.RecoveryPending, settings.OrderCustomData[TeyaConsumerloansPollingService.RecoveryKey]);
+    }
+
+    [Fact]
+    public void StoredPaymentKeepsTheLoanSettingsTheTokenAndTheProvider()
+    {
+        var stored = TeyaConsumerloansPollingService.StoredPayment(
+            new TeyaConsumerloansSettings { MerchantId = "1234567", TokenValidMinutes = 5 }, "loan-token");
+
+        Assert.Equal("loan-token", stored["teyaToken"]!.ToString());
+        Assert.Equal("teyaConsumerloans", stored["ekomPaymentProvider"]!.ToString());
+        Assert.Equal("1234567", stored.ToObject<TeyaConsumerloansSettings>()!.MerchantId);
     }
 
     sealed class Fixture : IAsyncDisposable, IDatabaseFactory
@@ -499,60 +497,63 @@ public sealed class TeyaConsumerloansTests
         public Clock Clock { get; } = new();
         public HttpStub Http { get; } = new();
         public List<LoanActivityEventArgs> Activity { get; } = [];
-        public IOrderService Orders { get; private set; } = null!;
+        public InMemoryOrderPayments Payments { get; } = new();
+
+        /// <summary>The payment rows Teya used before payments were recorded on the Ekom order.</summary>
+        public IOrderService LegacyOrders { get; private set; } = null!;
         public TeyaConsumerloansPollingService Service { get; private set; } = null!;
         public PollingRequest Request { get; private set; } = null!;
+        public bool Captured => Payments.Captures(Request.PaymentId).Any();
 
-        public static async Task<Fixture> CreateAsync(bool marked = true)
+        public static async Task<Fixture> CreateAsync()
         {
             var f = new Fixture();
-            f.Orders = new OrderService(new PaymentsConfiguration(), f);
+            f.LegacyOrders = new OrderService(new PaymentsConfiguration(), f);
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:umbracoDbDSN_ProviderName"] = "Microsoft.Data.Sqlite",
             }).Build();
-            new AspNetCore.EnsureTablesExist(f, configuration, NullLogger<AspNetCore.EnsureTablesExist>.Instance).Create();
+            new EnsureTablesExist(f, configuration, NullLogger<EnsureTablesExist>.Instance).Create();
             f.Service = new TeyaConsumerloansPollingService(
-                NullLogger<TeyaConsumerloansPollingService>.Instance, f.Http, f, f.Orders,
-                new PaymentsConfiguration(), null!, new HttpContextAccessor(), f._context);
+                NullLogger<TeyaConsumerloansPollingService>.Instance, f.Http, f, f.LegacyOrders, f.Payments,
+                new PaymentsConfiguration { SendEmailAlerts = false }, null!, new HttpContextAccessor(), f._context);
 
-            var payment = new PaymentSettings
-            {
-                OrderUniqueId = f.OrderId, OrderNumber = "123", OrderName = "Order 123",
-                Orders = [], Currency = "ISK", Store = "test", Language = "is-IS",
-                SuccessUrl = new Uri($"https://shop.example/receipt?orderId={f.OrderId}"),
-                CancelUrl = new Uri("https://shop.example/cancel"), PaymentProviderName = "Teya",
-            };
-            payment.OrderCustomData["ekomOrderUniqueId"] = f.OrderId.ToString();
-            if (marked)
-            {
-                TeyaConsumerloansPollingService.EnableRecovery(payment, payment.SuccessUrl);
-            }
+            var payment = f.PaymentSettings();
             var settings = new TeyaConsumerloansSettings
             {
                 ApiBaseUrl = new Uri("https://teya.example/"), Username = "test", Password = "not-a-secret",
                 MerchantId = "1234567", TokenValidMinutes = 5, ProgressValidMinutes = 5,
             };
             var token = Guid.NewGuid().ToString("N");
-            var order = await f.Orders.InsertAsync(100, payment, settings, token, new DefaultHttpContext());
-            f.Request = new PollingRequest { OrderId = order.UniqueId, Token = token, Settings = settings, RedirectUrl = payment.SuccessUrl };
+            var created = await f.Payments.CreateAsync(payment, "teyaConsumerloans", 100m,
+                TeyaConsumerloansPollingService.StoredPayment(settings, token), createdUtc: f.Clock.GetUtcNow().UtcDateTime);
+            f.Request = new PollingRequest { PaymentId = created.PaymentId, Token = token, Settings = settings, RedirectUrl = payment.SuccessUrl };
             LoanEvents.ActivityAsync += f.LogAsync;
             return f;
         }
 
-        public Task PollAsync(CancellationToken ct = default) => Service.PollOrderAsync(Request, ct, Clock);
-        public async Task SetAgeAsync(TimeSpan age)
+        public PaymentSettings PaymentSettings()
         {
-            var order = (await Orders.GetAsync(Request.OrderId))!;
-            order.Date = Clock.GetLocalNow().DateTime - age;
-            await Orders.UpdateAsync(order);
+            var payment = new PaymentSettings
+            {
+                OrderUniqueId = OrderId, OrderNumber = "123", OrderName = "Order 123",
+                Orders = [], Currency = "ISK", Store = "test", Language = "is-IS",
+                SuccessUrl = new Uri($"https://shop.example/receipt?orderId={OrderId}"),
+                CancelUrl = new Uri("https://shop.example/cancel"), PaymentProviderName = "Teya",
+            };
+            payment.OrderCustomData["ekomOrderUniqueId"] = OrderId.ToString();
+            TeyaConsumerloansPollingService.EnableRecovery(payment, payment.SuccessUrl);
+            return payment;
         }
 
-        public async Task<string> RecoveryStateAsync()
-        {
-            var order = (await Orders.GetAsync(Request.OrderId))!;
-            return order.EkomPaymentSettings.OrderCustomData[TeyaConsumerloansPollingService.RecoveryKey];
-        }
+        public Task PollAsync(CancellationToken ct = default) => Service.PollOrderAsync(Request, ct, Clock);
+
+        /// <summary>The loans the service would pick up again after a restart at the test clock's time.</summary>
+        public Task<IReadOnlyList<PollingRequest>> RecoveryAsync() => Service.GetRecoveryRequestsAsync(default, Clock);
+
+        public void SetAge(TimeSpan age)
+            => Payments.Payments.Single(x => x.PaymentId == Request.PaymentId).CreatedUtc = Clock.GetUtcNow().UtcDateTime - age;
+
         Task LogAsync(object sender, LoanActivityEventArgs args) { Activity.Add(args); return Task.CompletedTask; }
         public DbContext GetDatabase() => new(ProviderName.SQLiteMS, $"Data Source={_path};Pooling=False");
         public SqlConnection GetSqlConnection() => throw new NotSupportedException();

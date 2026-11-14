@@ -25,7 +25,7 @@ public class Payment : IPaymentProvider
     readonly ILogger<Payment> _logger;
     readonly PaymentsConfiguration _settings;
     readonly IUmbracoService _uService;
-    readonly IOrderService _orderService;
+    readonly Ekom.Services.IOrderPayments _payments;
     readonly HttpContext _httpCtx;
     readonly IHttpClientFactory _httpClientFactory;
     readonly IConfiguration _configuration;
@@ -36,7 +36,7 @@ public class Payment : IPaymentProvider
         ILogger<Payment> logger,
         PaymentsConfiguration settings,
         IUmbracoService uService,
-        IOrderService orderService,
+        Ekom.Services.IOrderPayments payments,
         IHttpContextAccessor httpContext,
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration)
@@ -44,7 +44,7 @@ public class Payment : IPaymentProvider
         _logger = logger;
         _settings = settings;
         _uService = uService;
-        _orderService = orderService;
+        _payments = payments;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
@@ -82,13 +82,14 @@ public class Payment : IPaymentProvider
 
             var errorUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.ErrorUrl, _httpCtx.Request);
 
-            // Persist in database and retrieve unique order id
-            var orderStatus = await _orderService.InsertAsync(
-                total,
+            // Store the payment on the Ekom order. AltaPay identifies it by the order id (shop_orderid) in its responses.
+            var payment = await _payments.CreateAsync(
                 paymentSettings,
-                Ekom.Payments.Providers.PaymentRowGuard.Stamp(altaSettings, _ppNodeName),
-                paymentSettings.OrderUniqueId.ToString(),
-                _httpCtx
+                _ppNodeName,
+                total,
+                altaSettings,
+                providerReference: paymentSettings.OrderUniqueId.ToString(),
+                httpContext: _httpCtx
             ).ConfigureAwait(false);
 
             // Localhost is not valid for callbacks, override host if needed
@@ -102,7 +103,8 @@ public class Payment : IPaymentProvider
             var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
             var formUrl = altaSettings.PaymentFormUrl == null ? null : PaymentsUriHelper.EnsureFullUri(new Uri(altaSettings.PaymentFormUrl, UriKind.Relative), _httpCtx.Request);
 
-            _logger.LogInformation($"Alta Payment Request - Amount: {total} OrderId: {paymentSettings.OrderUniqueId}");
+            _logger.LogInformation("Alta Payment Request - " + PaymentLog.Template + " Amount: {Total}",
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, total);
 
             var client = _httpClientFactory.CreateClient();
             client.BaseAddress = altaSettings.BaseAddress;
@@ -152,7 +154,8 @@ public class Payment : IPaymentProvider
             if (string.IsNullOrEmpty(url))
             {
                 url = errorUrl.ToString() + "?errorStatus=paymenterror&errorMessage=We could no process your payment. Try again or contact Nespresso.";
-                _logger.LogError($"Alta Payment Request - Error creating Payment - Request: {JsonSerializer.Serialize(form)} - Response: {contentString} OrderId: {paymentSettings.OrderUniqueId} Message: {errorMessage}");
+                _logger.LogError("Alta Payment Request - Error creating payment. " + PaymentLog.Template + " Message: {ErrorMessage} Response: {Response}",
+                    payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, errorMessage, contentString);
             }
 
             var cspNonce = CspHelper.GetCspNonce(_httpCtx, _configuration);
@@ -161,11 +164,8 @@ public class Payment : IPaymentProvider
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Alta Payment Request - Payment Request Failed");
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
+            _logger.LogError(ex, "Alta Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }
     }
