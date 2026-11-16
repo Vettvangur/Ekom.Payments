@@ -18,8 +18,7 @@ workflow, `publish-ekom-payments.yml`. Release groups are defined in
   group with unreleased changes and bumps only those groups.
 - AsynchronousExample remains outside the publishing list.
 
-All groups move from the `0.2.x` line to `1.0.0` (see "Moving to 1.0.0" below).
-After that, release-please bumps the patch number only (`1.0.1`, `1.0.2`, ...),
+Release-please bumps the patch number only (`1.1.1`, `1.1.2`, ...),
 independently for each group. Provider-only commits are excluded from
 the shared group's release history; each provider tracks its own directory.
 A commit changing multiple providers bumps each of them in the same release PR;
@@ -31,28 +30,15 @@ only descriptive. Changes to shared provider build settings outside individual
 provider folders do not automatically release providers. Include a relevant
 change in each affected provider directory when a new package is required.
 
-## Moving to 1.1.0
+## Version line
 
-The providers were rebuilt on Ekom's order payments and need Ekom 1.2.0 or later, so every group
-is released as `1.1.0` instead of the next `1.0.x` patch: `release-as` is `1.1.0` for all nine groups,
-every provider declares `CorePackageVersion` `1.1.0`, and the publishing workflow accepts `1.1.x` tags.
-All groups release from one release PR. The provider publish runs fail until Core `1.1.0` is on
-NuGet.org; rerun them once it is. Remove the `release-as` lines after this release, as described below.
+Every group is on `1.1.x`. The providers were rebuilt on Ekom's order payments in `1.1.0` and need
+Ekom 1.2.0 or later; every provider declares `CorePackageVersion` `1.1.0`.
 
-## Moving to 1.0.0
-
-Every package in `release-please-config.json` carries `"release-as": "1.0.0"`, so
-each group's next release is `1.0.0` instead of the next `0.2.x` patch. A group only
-gets released when it has unreleased changes.
-
-`release-as` is not cleared automatically. Once a group has been released as
-`1.0.0`, remove its `release-as` line from `release-please-config.json` before that
-group's next change is merged; otherwise release-please proposes `1.0.0` for it
-again. When all nine groups are on `1.0.x`, no `release-as` line should remain.
-
-Providers keep their existing `CorePackageVersion` (a `0.2.x` Core) until they are
-deliberately moved to a `1.0.x` Core as described below. The publishing workflow
-accepts `0.2.x` and `1.0.x` tags and Core versions.
+No group has a `release-as` line in `release-please-config.json`. To move a group to a new minor or
+major version, add `"release-as": "<version>"` to it, make sure the publishing workflow accepts that
+version line, and remove the line again once the release is out; otherwise release-please proposes
+the same version for the group's next change.
 
 ## Core dependencies
 

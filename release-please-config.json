@@ -7,7 +7,6 @@
       "include-component-in-tag": true,
       "release-type": "simple",
       "versioning": "always-bump-patch",
-      "release-as": "1.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
@@ -27,7 +26,6 @@
       "include-component-in-tag": true,
       "release-type": "simple",
       "versioning": "always-bump-patch",
-      "release-as": "1.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
@@ -43,7 +41,6 @@
       "include-component-in-tag": true,
       "release-type": "simple",
       "versioning": "always-bump-patch",
-      "release-as": "1.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
@@ -59,7 +56,6 @@
       "include-component-in-tag": true,
       "release-type": "simple",
       "versioning": "always-bump-patch",
-      "release-as": "1.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
@@ -75,7 +71,6 @@
       "include-component-in-tag": true,
       "release-type": "simple",
       "versioning": "always-bump-patch",
-      "release-as": "1.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
@@ -91,7 +86,6 @@
       "include-component-in-tag": true,
       "release-type": "simple",
       "versioning": "always-bump-patch",
-      "release-as": "1.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
@@ -107,7 +101,6 @@
       "include-component-in-tag": true,
       "release-type": "simple",
       "versioning": "always-bump-patch",
-      "release-as": "1.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
@@ -123,7 +116,6 @@
       "include-component-in-tag": true,
       "release-type": "simple",
       "versioning": "always-bump-patch",
-      "release-as": "1.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
@@ -139,7 +131,6 @@
       "include-component-in-tag": true,
       "release-type": "simple",
       "versioning": "always-bump-patch",
-      "release-as": "1.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
