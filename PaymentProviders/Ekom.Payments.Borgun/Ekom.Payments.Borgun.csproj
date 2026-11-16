@@ -9,7 +9,7 @@
         <PackageId>Ekom.Payments.Borgun</PackageId>
         <Version>1.0.0</Version>
         <!-- Minimum published Core version used when packaging this provider. -->
-        <CorePackageVersion>0.2.97</CorePackageVersion>
+        <CorePackageVersion>1.1.0</CorePackageVersion>
         <Title>Ekom Payments Borgun</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>

@@ -31,6 +31,14 @@ only descriptive. Changes to shared provider build settings outside individual
 provider folders do not automatically release providers. Include a relevant
 change in each affected provider directory when a new package is required.
 
+## Moving to 1.1.0
+
+The providers were rebuilt on Ekom's order payments and need Ekom 1.2.0 or later, so every group
+is released as `1.1.0` instead of the next `1.0.x` patch: `release-as` is `1.1.0` for all nine groups,
+every provider declares `CorePackageVersion` `1.1.0`, and the publishing workflow accepts `1.1.x` tags.
+All groups release from one release PR. The provider publish runs fail until Core `1.1.0` is on
+NuGet.org; rerun them once it is. Remove the `release-as` lines after this release, as described below.
+
 ## Moving to 1.0.0
 
 Every package in `release-please-config.json` carries `"release-as": "1.0.0"`, so
