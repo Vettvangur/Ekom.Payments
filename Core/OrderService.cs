@@ -96,6 +96,8 @@ class OrderService : IOrderService
         // Return order id
         await db.InsertAsync(orderStatus).ConfigureAwait(false);
 
+        await LegacyPaymentBridge.RequestedAsync(orderStatus, paymentSettings, paymentProviderSettings, httpContext).ConfigureAwait(false);
+
         return orderStatus;
     }
 

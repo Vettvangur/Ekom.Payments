@@ -3,12 +3,7 @@
     "path": ".",
     "version-file": "Payments.Version.props",
     "projects": [
-      "Core/Ekom.Payments.Core.csproj",
-      "AspNetCore/Ekom.Payments.AspNetCore.csproj",
-      "Umbraco/Ekom.Payments.U10/Ekom.Payments.U10.csproj",
-      "Umbraco/Ekom.Payments.U17/Ekom.Payments.U17.csproj",
-      "Umbraco/Ekom.Payments.U18/Ekom.Payments.U18.csproj",
-      "Umbraco/Ekom.Payments.U19/Ekom.Payments.U19.csproj"
+      "Core/Ekom.Payments.Core.csproj"
     ]
   },
   "Ekom.Payments.Valitor": {

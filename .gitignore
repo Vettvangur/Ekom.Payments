@@ -104,3 +104,6 @@ Ekom.Site/App_Plugins/EkomManager/js/app.js
 Ekom.Manager.Frontend.Old
 Ekom.Site/App_Plugins/EkomManager/css/react-table.css
 *.snupkg
+
+# Machine-specific build settings
+Directory.Build.local.props

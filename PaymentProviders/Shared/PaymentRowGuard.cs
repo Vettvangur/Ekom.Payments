@@ -80,6 +80,14 @@ static class PaymentRowGuard
     /// Marks the payment row as paid. <br />
     /// Only returns true for the caller that changed the row, concurrent or repeated callbacks get false.
     /// </summary>
+    /// <summary>
+    /// A payment recorded on the Ekom order belongs to the provider that started it. A payment copied from
+    /// a legacy row that predates provider stamps has no provider: the callback's own secret check decides.
+    /// </summary>
+    internal static bool BelongsTo(Ekom.Models.Payments.OrderPayment payment, string provider)
+        => string.IsNullOrEmpty(payment.ProviderType)
+        || string.Equals(payment.ProviderType, provider, StringComparison.OrdinalIgnoreCase);
+
     internal static async Task<bool> TryMarkPaidAsync(IDatabaseFactory databaseFactory, OrderStatus order)
     {
         await using var db = databaseFactory.GetDatabase();

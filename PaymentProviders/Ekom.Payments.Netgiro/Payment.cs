@@ -1,5 +1,5 @@
 using Ekom.Payments.Helpers;
-using Ekom.Payments.Providers;
+using Ekom.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -23,7 +23,7 @@ class Payment : IPaymentProvider
     readonly ILogger<Payment> _logger;
     readonly PaymentsConfiguration _settings;
     readonly IUmbracoService _uService;
-    readonly IOrderService _orderService;
+    readonly IOrderPayments _payments;
     readonly HttpContext _httpCtx;
     readonly IConfiguration _config;
 
@@ -34,14 +34,14 @@ class Payment : IPaymentProvider
         ILogger<Payment> logger,
         PaymentsConfiguration settings,
         IUmbracoService uService,
-        IOrderService orderService,
+        IOrderPayments payments,
         IHttpContextAccessor httpContext,
         IConfiguration config)
     {
         _logger = logger;
         _settings = settings;
         _uService = uService;
-        _orderService = orderService;
+        _payments = payments;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
         _config = config;
     }
@@ -64,7 +64,8 @@ class Payment : IPaymentProvider
 
         try
         {
-            _logger.LogInformation("Netgiro Payment Request - Start");
+            _logger.LogInformation("Netgiro Payment Request - Start. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
 
             var netgiroSettings = paymentSettings.CustomSettings.ContainsKey(typeof(NetgiroSettings))
                 ? (paymentSettings.CustomSettings[typeof(NetgiroSettings)] as NetgiroSettings)!
@@ -78,22 +79,22 @@ class Payment : IPaymentProvider
 
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
 
-            // Persist in database and retrieve unique order id
-            var orderStatus = await _orderService.InsertAsync(
-                total,
+            // Store the payment on the Ekom order. Netgiro echoes the payment id back as its reference number.
+            var payment = await _payments.CreateAsync(
                 paymentSettings,
-                PaymentRowGuard.Stamp(netgiroSettings, _ppNodeName),
-                paymentSettings.OrderUniqueId.ToString(),
-                _httpCtx
+                _ppNodeName,
+                total,
+                netgiroSettings,
+                httpContext: _httpCtx
             ).ConfigureAwait(false);
 
             // This example shows how to construct a success url / receipt page destination
             // adding the reference querystring allows for easy retrieval of order using the order helper on the success/receipt page
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
+            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + payment.PaymentId);
 
             paymentSettings.CancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
-            paymentSettings.CancelUrl = PaymentsUriHelper.AddQueryString(paymentSettings.CancelUrl, "?reference=" + orderStatus.UniqueId);
+            paymentSettings.CancelUrl = PaymentsUriHelper.AddQueryString(paymentSettings.CancelUrl, "?reference=" + payment.PaymentId);
 
             var reportUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
 
@@ -118,14 +119,12 @@ class Payment : IPaymentProvider
                 formValues.Add($"Items[{lineNumber}].Amount", FormatPrice(order.GrandTotal));
             }
 
-            var sig = RequestSignature(netgiroSettings, orderStatus.UniqueId, total);
+            var sig = RequestSignature(netgiroSettings, payment.PaymentId, total);
             formValues.Add("Signature", sig);
-            formValues.Add("ReferenceNumber", orderStatus.UniqueId.ToString());
+            formValues.Add("ReferenceNumber", payment.PaymentId.ToString());
 
-            _logger.LogInformation(
-                "Netgiro Payment Request - Amount: {Total} OrderId: {OrderUniqueId}",
-                total,
-                orderStatus.UniqueId);
+            _logger.LogInformation("Netgiro Payment Request - " + PaymentLog.Template + " Amount: {Total}",
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, total);
 
             var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
 
@@ -133,11 +132,8 @@ class Payment : IPaymentProvider
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AsynchronousExample Payment Request - Payment Request Failed");
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
+            _logger.LogError(ex, "Netgiro Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }
     }

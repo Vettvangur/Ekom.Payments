@@ -1,4 +1,5 @@
 using Ekom.Payments.Helpers;
+using Ekom.Services;
 using Ekom.Payments.PayTrail.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
@@ -17,7 +18,7 @@ public class Payment : IPaymentProvider
 
     readonly ILogger<Payment> _logger;
     readonly IUmbracoService _uService;
-    readonly IOrderService _orderService;
+    readonly IOrderPayments _payments;
     readonly HttpContext _httpCtx;
     readonly IHttpClientFactory _httpClientFactory;
     readonly IConfiguration _config;
@@ -26,14 +27,14 @@ public class Payment : IPaymentProvider
         ILogger<Payment> logger,
         PaymentsConfiguration settings,
         IUmbracoService uService,
-        IOrderService orderService,
+        IOrderPayments payments,
         IHttpContextAccessor httpContext,
         IHttpClientFactory httpClientFactory,
         IConfiguration config)
     {
         _logger = logger;
         _uService = uService;
-        _orderService = orderService;
+        _payments = payments;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
         _httpClientFactory = httpClientFactory;
         _config = config;
@@ -47,7 +48,8 @@ public class Payment : IPaymentProvider
 
         try
         {
-            _logger.LogInformation("PayTrail Payment Request - Start");
+            _logger.LogInformation("PayTrail Payment Request - Start. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
 
             var payTrailSettings = paymentSettings.CustomSettings.ContainsKey(typeof(PayTrailSettings))
                 ? paymentSettings.CustomSettings[typeof(PayTrailSettings)] as PayTrailSettings
@@ -68,12 +70,13 @@ public class Payment : IPaymentProvider
             var total = orderLines.Sum(x => x.GrandTotal);
             decimal amountMinorUnits = ToMinorUnits(total, paymentSettings.Currency);
 
-            var orderStatus = await _orderService.InsertAsync(
-                total,
+            // Store the payment on the Ekom order. PayTrail echoes the payment id back as its stamp.
+            var payment = await _payments.CreateAsync(
                 paymentSettings,
+                _ppNodeName,
+                total,
                 payTrailSettings,
-                null,
-                _httpCtx
+                httpContext: _httpCtx
             ).ConfigureAwait(false);
 
             var reportUrl = paymentSettings.ReportUrl == null
@@ -83,8 +86,8 @@ public class Payment : IPaymentProvider
 
             var createPaymentRequest = new CreatePaymentRequest
             {
-                Stamp = orderStatus.UniqueId.ToString(),
-                Reference = !string.IsNullOrEmpty(paymentSettings.OrderNumber) ? paymentSettings.OrderNumber : orderStatus.ReferenceId.ToString(CultureInfo.InvariantCulture),
+                Stamp = payment.PaymentId.ToString(),
+                Reference = !string.IsNullOrEmpty(paymentSettings.OrderNumber) ? paymentSettings.OrderNumber : payment.Sequence.ToString(CultureInfo.InvariantCulture),
                 Amount = amountMinorUnits,
                 Currency = paymentSettings.Currency,
                 Language = ParseSupportedLanguage(paymentSettings.Language),
@@ -107,21 +110,16 @@ public class Payment : IPaymentProvider
             var svc = new PayTrailService(_httpClientFactory, _logger);
             var response = await svc.CreatePaymentAsync(payTrailSettings, createPaymentRequest).ConfigureAwait(false);
 
-            orderStatus.CustomData = response.TransactionId;
-            await _orderService.UpdateAsync(orderStatus).ConfigureAwait(false);
-
-            _logger.LogInformation("PayTrail Payment Request - Amount: {Total} OrderId: {OrderId} TransactionId: {TransactionId}", total, orderStatus.UniqueId, response.TransactionId);
+            _logger.LogInformation("PayTrail Payment Request - " + PaymentLog.Template + " Amount: {Total} TransactionId: {TransactionId}",
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, total, response.TransactionId);
 
             var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
             return FormHelper.CreateRequest(new Dictionary<string, string?>(), response.Href!.ToString(), "GET", cspNonce: cspNonce);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "PayTrail Payment Request - Payment Request Failed. OrderId: {OrderId} OrderNumber: {OrderNumber}", paymentSettings.OrderUniqueId, paymentSettings.OrderNumber);
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
+            _logger.LogError(ex, "PayTrail Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }
     }

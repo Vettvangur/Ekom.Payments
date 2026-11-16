@@ -1,17 +1,18 @@
+using Ekom.Models.Payments;
 using Ekom.Payments.Helpers;
+using Ekom.Payments.Providers;
 using Ekom.Payments.SiminnPay.Model;
-using LinqToDB;
+using Ekom.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using System.Globalization;
 using System.Net.Mail;
 
 namespace Ekom.Payments.SiminnPay;
 
 /// <summary>
-/// Receives a callback from Straumur when customer completes payment.
-/// Changes order status and optionally runs a custom callback provided by the application consuming this library.
+/// Receives Síminn Pay's notification when the customer answers a payment request.
+/// Verifies it and records the outcome on the Ekom order; Ekom then completes the checkout.
 /// </summary>
 [Route("ekom/payments/[controller]")]
 [ApiController]
@@ -19,11 +20,10 @@ public class SiminnPayResponseController : ControllerBase
 {
     readonly ILogger _logger;
     readonly PaymentsConfiguration _settings;
-    readonly IOrderService _orderService;
-    readonly IDatabaseFactory _dbFac;
+    readonly IOrderPayments _payments;
+    readonly IOrderService _legacyOrders;
     readonly IMailService _mailSvc;
     readonly IUmbracoService _uService;
-    readonly IConfiguration _configuration;
 
     /// <summary>
     /// ctor
@@ -31,172 +31,101 @@ public class SiminnPayResponseController : ControllerBase
     public SiminnPayResponseController(
         ILogger<SiminnPayResponseController> logger,
         PaymentsConfiguration settings,
-        IOrderService orderService,
-        IDatabaseFactory dbFac,
+        IOrderPayments payments,
+        IOrderService legacyOrders,
         IMailService mailSvc,
-        IUmbracoService uService,
-        IConfiguration configuration)
+        IUmbracoService uService)
     {
         _logger = logger;
         _settings = settings;
-        _orderService = orderService;
-        _dbFac = dbFac;
+        _payments = payments;
+        _legacyOrders = legacyOrders;
         _mailSvc = mailSvc;
         _uService = uService;
-        _configuration = configuration;
     }
 
     /// <summary>
-    /// Receives a callback from Straumur when customer completes payment.
-    /// Changes order status and optionally runs a custom callback provided by the application consuming this library.
+    /// Receives Síminn Pay's notification for a payment order.
     /// </summary>
     [ApiExplorerSettings(IgnoreApi = true)]
     [HttpGet, HttpPost]
     [Route("")]
     public async Task<IActionResult> Post(SiminnPayOrderStatus notificationCallBack)
     {
-        _logger.LogInformation("SiminnPay Response Hit - OrderKey: {OrderKey}", notificationCallBack?.OrderKey);
-
         if (!ModelState.IsValid || notificationCallBack == null)
         {
             return BadRequest();
         }
 
+        // Until the payment is loaded Síminn Pay's order key is all we know.
+        _logger.LogInformation("SiminnPay Response - Start. OrderKey: {OrderKey}", notificationCallBack.OrderKey);
+
+        OrderPayment? payment = null;
+
         try
         {
-            OrderStatus? order = await _orderService.GetByCustomAsync(notificationCallBack.OrderKey.ToString());
-            if (order == null)
+            payment = await LegacyPaymentBridge.GetOrImportByReferenceAsync(
+                _payments, _legacyOrders, Payment._ppNodeName, notificationCallBack.OrderKey.ToString());
+            if (payment == null || !PaymentRowGuard.BelongsTo(payment, Payment._ppNodeName))
             {
-                _logger.LogWarning("SiminnPay Response - Unable to find order {OrderKey}", notificationCallBack.OrderKey);
+                _logger.LogWarning("SiminnPay Response - Unable to find a Síminn Pay payment. OrderKey: {OrderKey}", notificationCallBack.OrderKey);
 
                 return NotFound();
             }
-            if (order.Paid)
-            {
-                return Ok();
-            }
 
-            var paymentSettings = order.EkomPaymentSettings;
-            var siminnPaySettings = paymentSettings.CustomSettings.ContainsKey(typeof(SiminnPaySettings))
-                    ? paymentSettings.CustomSettings[typeof(SiminnPaySettings)] as SiminnPaySettings
-                    : new SiminnPaySettings();
+            using var scope = PaymentLog.BeginScope(_logger, payment);
 
-            _uService.PopulatePaymentProviderProperties(
-                paymentSettings,
-                Payment._ppNodeName,
-                siminnPaySettings,
-                SiminnPaySettings.Properties);
+            var siminnPaySettings = ReadSettings(payment);
 
+            // A notification that cannot be verified says nothing about the payment: it is logged, never recorded.
             if (string.IsNullOrWhiteSpace(siminnPaySettings?.Secret))
             {
-                _logger.LogWarning("SiminnPay Response - Missing shared secret for order {OrderKey}", notificationCallBack.OrderKey);
+                _logger.LogWarning("SiminnPay Response - Missing shared secret. " + PaymentLog.Template,
+                    payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
                 return Unauthorized();
             }
 
             if (!IsValidSignature(notificationCallBack, siminnPaySettings.Secret))
             {
-                _logger.LogDebug("Posted HMAC: {HMAC}", notificationCallBack.HMAC);
-
-                _logger.LogWarning("Signature mismatch, unauthorized order update request");
-
-                await Model.Events.OnErrorAsync(this, new ErrorEventArgs
-                {
-                    OrderStatus = order,
-                });
+                _logger.LogWarning("SiminnPay Response - Signature mismatch. " + PaymentLog.Template,
+                    payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
                 return Unauthorized();
             }
 
-            if (notificationCallBack.Amount != order.Amount)
+            if (notificationCallBack.Amount != payment.Amount)
             {
                 _logger.LogWarning(
-                    "SiminnPay Response - Amount mismatch for order {OrderKey}. Expected {ExpectedAmount}, received {ReceivedAmount}",
-                    notificationCallBack.OrderKey,
-                    order.Amount,
-                    notificationCallBack.Amount);
-
-                await Model.Events.OnErrorAsync(this, new ErrorEventArgs
-                {
-                    OrderStatus = order,
-                });
+                    "SiminnPay Response - Amount mismatch. Expected {ExpectedAmount}, received {ReceivedAmount}. " + PaymentLog.Template,
+                    payment.Amount, notificationCallBack.Amount, payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
                 return BadRequest();
             }
 
-            _logger.LogInformation("SiminnPay Response Hit - Signature verified successfully - notificationCallBack.Status: " + notificationCallBack.Status);
-
-            if (order.Paid == false)
+            var transaction = ToTransaction(payment, notificationCallBack);
+            if (transaction == null)
             {
-                try
-                {
-
-                    var currencyFormat = new CultureInfo(paymentSettings.Currency, false).NumberFormat;
-                    var paymentData = new PaymentData
-                    {
-                        Id = order.UniqueId,
-                        Date = DateTime.Now,
-                        CustomData = notificationCallBack.TransactionDetails?.TransactionId ?? "",
-                        Amount = order.Amount.ToString(currencyFormat),
-                    };
-
-                    using var db = _dbFac.GetDatabase();
-                    await db.InsertOrReplaceAsync(paymentData);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "SiminnPay Response - Error saving payment data");
-                }
-
-                //if (Guid.TryParse(order.CustomData, out var orderKey))
-                //{
-                //    var svc = new SiminnPayService(siminnPaySettings, _logger);
-                //    var confirmation = await svc.GetStatus(orderKey);
-                //    if (confirmation?.Status != notificationCallBack.Status)
-                //    {
-                //        await Model.Events.OnErrorAsync(this, new ErrorEventArgs
-                //        {
-                //            OrderStatus = order,
-                //        });
-                //    }
-                //}
-
-                if (notificationCallBack.Status == SiminnPayStatus.PaymentSuccessful)
-                {
-                    order.Paid = true;
-                    using (var db = _dbFac.GetDatabase())
-                    {
-                        await db.UpdateAsync(order);
-                    }
-
-                    await Model.Events.OnSuccessAsync(this, new SuccessEventArgs
-                    {
-                        OrderStatus = order,
-                    });
-
-                    _logger.LogDebug("SiminnPay Response Hit - SUCCESS");
-                }
-                else
-                {
-                    await Model.Events.OnErrorAsync(this, new ErrorEventArgs
-                    {
-                        OrderStatus = order,
-                    });
-                }
+                _logger.LogInformation("SiminnPay Response - Status {SiminnPayStatus} is not final. " + PaymentLog.Template,
+                    notificationCallBack.Status, payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
+                return Ok();
             }
-            
+
+            var result = await _payments.RecordAsync(transaction);
+
+            _logger.LogInformation(
+                "SiminnPay Response - {SiminnPayStatus} recorded as {PaymentEvent}. " + PaymentLog.Template + " FirstDelivery: {Recorded}",
+                notificationCallBack.Status, transaction.Type, payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, result.Recorded);
+
             return Ok();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Síminn Pay Response Error");
-            await Model.Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
+            _logger.LogError(ex, "SiminnPay Response - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId} OrderKey: {OrderKey}",
+                payment?.OrderNumber, payment?.OrderUniqueId, notificationCallBack.OrderKey);
 
             if (_settings.SendEmailAlerts)
             {
                 await _mailSvc.SendAsync(new MailMessage
                 {
-                    Subject = "Síminn Pay Response - Failed",
+                    Subject = $"Síminn Pay Response - Failed. Order {payment?.OrderNumber ?? "unknown"}",
                     Body = "<p>Síminn Pay Response - Failed<p><br />" + ex,
                     IsBodyHtml = true,
                 });
@@ -206,26 +135,70 @@ public class SiminnPayResponseController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Translates a verified Síminn Pay status into what is recorded on the order. Null while the customer has not answered.
+    /// </summary>
+    internal static PaymentTransaction? ToTransaction(OrderPayment payment, SiminnPayOrderStatus notification)
+    {
+        var transaction = new PaymentTransaction
+        {
+            PaymentId = payment.PaymentId,
+            Type = PaymentTransactionType.Captured,
+            Amount = payment.Amount,
+            TransactionId = notification.TransactionDetails?.TransactionId,
+            PaymentMethod = "Síminn Pay",
+            Details =
+            [
+                new PaymentDetail("orderKey", "Síminn Pay order key", notification.OrderKey.ToString(), true),
+                new PaymentDetail("status", "Síminn Pay status", notification.Status.ToString()),
+            ],
+        };
+
+        return notification.Status switch
+        {
+            SiminnPayStatus.PaymentSuccessful => transaction with { IdempotencyKey = LegacyPaymentBridge.CaptureKey(payment.PaymentId) },
+            SiminnPayStatus.CancelledByCustomer => transaction with { Type = PaymentTransactionType.Cancelled, Message = "Cancelled by the customer" },
+            SiminnPayStatus.CancelledByMerchant => transaction with { Type = PaymentTransactionType.Cancelled, Message = "Cancelled by the merchant" },
+            SiminnPayStatus.Expired => transaction with { Type = PaymentTransactionType.Failed, Message = "The payment request expired" },
+            SiminnPayStatus.AcquirerError => transaction with { Type = PaymentTransactionType.Failed, Message = "The acquirer reported an error" },
+            SiminnPayStatus.UnknownError => transaction with { Type = PaymentTransactionType.Failed, Message = "Síminn Pay reported an unknown error" },
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Lets the storefront poll the state of a payment request while the customer answers it in the Síminn Pay app.
+    /// </summary>
     [HttpGet("status")]
     public async Task<ActionResult> StatusAsync(Guid siminnPayOrderKey)
     {
-        _logger.LogDebug("SiminnPay Status Requested - siminnPayOrderKey: {SiminnPayOrderKey}", siminnPayOrderKey);
-
         if (siminnPayOrderKey == Guid.Empty)
         {
             return BadRequest("Missing siminnPayOrderKey parameter.");
         }
 
-        OrderStatus? order = await _orderService.GetByCustomAsync(siminnPayOrderKey.ToString());
-        if (order == null)
+        var payment = await LegacyPaymentBridge.GetOrImportByReferenceAsync(
+            _payments, _legacyOrders, Payment._ppNodeName, siminnPayOrderKey.ToString());
+        if (payment == null || !PaymentRowGuard.BelongsTo(payment, Payment._ppNodeName))
         {
             return NotFound("Pay order not found.");
         }
 
-        var paymentSettings = order.EkomPaymentSettings;
-        var siminnPaySettings = paymentSettings.CustomSettings.ContainsKey(typeof(SiminnPaySettings))
-                ? paymentSettings.CustomSettings[typeof(SiminnPaySettings)] as SiminnPaySettings
-                : new SiminnPaySettings();
+        var svc = new SiminnPayService(ReadSettings(payment)!, _logger);
+        var initialStatus = await svc.GetStatus(siminnPayOrderKey);
+
+        _logger.LogDebug("SiminnPay Status Requested - Status: {Status} " + PaymentLog.Template,
+            initialStatus.Status, payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
+
+        return new JsonResult(new SiminnPayStatusView(payment, initialStatus));
+    }
+
+    // Síminn Pay's credentials are read from the payment provider node, not stored with the payment.
+    SiminnPaySettings? ReadSettings(OrderPayment payment)
+    {
+        var paymentSettings = payment.GetPaymentSettings()
+            ?? throw new InvalidOperationException($"Payment {payment.PaymentId} has no payment settings.");
+        var siminnPaySettings = new SiminnPaySettings();
 
         _uService.PopulatePaymentProviderProperties(
             paymentSettings,
@@ -233,18 +206,7 @@ public class SiminnPayResponseController : ControllerBase
             siminnPaySettings,
             SiminnPaySettings.Properties);
 
-        var svc = new SiminnPayService(siminnPaySettings!, _logger);
-        var initialStatus = await svc.GetStatus(siminnPayOrderKey);
-
-        _logger.LogDebug("SiminnPay Status Requested - Status: {Status}", initialStatus.Status);
-
-        if (initialStatus.Status == SiminnPayStatus.Expired
-        || initialStatus.Status == SiminnPayStatus.CancelledByCustomer)
-        {
-            _logger.LogDebug("SiminnPay Status Requested - Status expired or cancelled, updated siminnPayOrder");
-        }
-
-        return new JsonResult(new SiminnPayStatusView(order, initialStatus));
+        return siminnPaySettings;
     }
 
     private static bool IsValidSignature(SiminnPayOrderStatus notificationCallBack, string secret)

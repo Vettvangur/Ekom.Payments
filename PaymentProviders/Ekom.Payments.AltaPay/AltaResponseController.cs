@@ -1,7 +1,8 @@
+using Ekom.Models.Payments;
 using Ekom.Payments.AltaPay.Model;
 using Ekom.Payments.Helpers;
 using Ekom.Payments.Providers;
-using LinqToDB;
+using Ekom.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
@@ -14,8 +15,8 @@ using System.Text.Json;
 namespace Ekom.Payments.AltaPay;
 
 /// <summary>
-/// Receives a callback from Straumur when customer completes payment.
-/// Changes order status and optionally runs a custom callback provided by the application consuming this library.
+/// Receives AltaPay's responses for a payment.
+/// Verifies the confirmation and records the capture on the Ekom order; Ekom then completes the checkout.
 /// </summary>
 [Route("ekom/payments/[controller]")]
 [ApiController]
@@ -23,8 +24,8 @@ public class AltaResponseController : ControllerBase
 {
     readonly ILogger _logger;
     readonly PaymentsConfiguration _settings;
-    readonly IOrderService _orderService;
-    readonly IDatabaseFactory _dbFac;
+    readonly IOrderPayments _payments;
+    readonly IOrderService _legacyOrders;
     readonly IMailService _mailSvc;
     readonly HttpContext _httpCtx;
 
@@ -34,15 +35,15 @@ public class AltaResponseController : ControllerBase
     public AltaResponseController(
         ILogger<AltaResponseController> logger,
         PaymentsConfiguration settings,
-        IOrderService orderService,
-        IDatabaseFactory dbFac,
+        IOrderPayments payments,
+        IOrderService legacyOrders,
         IMailService mailSvc,
         IHttpContextAccessor httpContext)
     {
         _logger = logger;
         _settings = settings;
-        _orderService = orderService;
-        _dbFac = dbFac;
+        _payments = payments;
+        _legacyOrders = legacyOrders;
         _mailSvc = mailSvc;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
     }
@@ -76,58 +77,42 @@ public class AltaResponseController : ControllerBase
             return Ok("Payment not Valid");
         }
 
+        OrderPayment? payment = null;
+
         try
         {
             var transaction = model.Body.Transactions.First();
-            if (!Guid.TryParse(transaction.ShopOrderId, out var orderId))
+            if (!TryGetOrderId(transaction.ShopOrderId, out var orderId))
             {
-                if(transaction.ShopOrderId == null)
-                {
-                    _logger.LogWarning("Alta Payment Response - MerchantReference is null");
-                    return BadRequest();
-                }
-
-                var merchantRefParts = transaction.ShopOrderId.Split(';');
-                var rawGuid = merchantRefParts.LastOrDefault();
-
-                if (!Guid.TryParse(rawGuid, out Guid newOrderId))
-                {
-                    return BadRequest();
-                }
-
-                orderId = newOrderId;
+                _logger.LogWarning("Alta Payment Response - ShopOrderId has no order id");
+                return BadRequest();
             }
 
-            _logger.LogInformation("Alta Payment Response - OrderID: " + orderId);
+            // Until the payment is loaded the order id is all we know.
+            _logger.LogInformation("Alta Payment Response - Start. OrderId: {OrderUniqueId}", orderId);
 
-            OrderStatus? order = await GetAltaPayOrderAsync(orderId);
+            payment = await FindPaymentAsync(orderId);
 
-            if (order == null)
+            if (payment == null)
             {
-                _logger.LogWarning("Alta Payment Response - Unable to find order {OrderId}", orderId);
+                _logger.LogWarning("Alta Payment Response - Unable to find an AltaPay payment. OrderId: {OrderUniqueId}", orderId);
 
                 return NotFound();
             }
 
-            if (order.Paid)
-            {
-                _logger.LogInformation("Alta Payment Response - Order {OrderId} already paid", orderId);
-                return Ok();
-            }
+            using var scope = PaymentLog.BeginScope(_logger, payment);
 
-            var paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
+            var paymentSettings = payment.GetPaymentSettings()
+                ?? throw new InvalidOperationException($"Payment {payment.PaymentId} has no payment settings.");
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
 
-            var altaSettings = JsonConvert.DeserializeObject<AltaSettings>(order.EkomPaymentProviderData);
+            var altaSettings = payment.GetProviderData<AltaSettings>();
 
+            // A response that cannot be verified says nothing about the payment: it is logged, never recorded.
             if (altaSettings == null || string.IsNullOrWhiteSpace(altaSettings.Terminal))
             {
-                _logger.LogError("Alta Payment Response - Order {OrderId} has no AltaPay settings, unable to verify", orderId);
-
-                await Events.OnErrorAsync(this, new ErrorEventArgs
-                {
-                    OrderStatus = order,
-                });
+                _logger.LogError("Alta Payment Response - No AltaPay settings, unable to verify. " + PaymentLog.Template,
+                    payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
 
                 return StatusCode(500);
             }
@@ -137,102 +122,64 @@ public class AltaResponseController : ControllerBase
             if (string.IsNullOrWhiteSpace(altaSettings.CustomerInformationSharedSecret))
             {
                 _logger.LogError(
-                    "Alta Payment Response - Order {OrderId} has no CustomerInformationSharedSecret, unable to verify. "
-                    + "Configure the shared secret on the AltaPay terminal and on the payment provider.",
-                    orderId);
-
-                await Events.OnErrorAsync(this, new ErrorEventArgs
-                {
-                    OrderStatus = order,
-                });
+                    "Alta Payment Response - No CustomerInformationSharedSecret, unable to verify. "
+                    + "Configure the shared secret on the AltaPay terminal and on the payment provider. " + PaymentLog.Template,
+                    payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
 
                 return StatusCode(500);
             }
 
-            _logger.LogInformation("Alta Payment Response - Validationg checksum");
-
-            if (string.IsNullOrEmpty(response.Checksum))
-            {
-                _logger.LogWarning("Alta Payment Response - Expected incoming checksum not given.");
-            }
-
             var calculatedChecksum = AltaResponseHelper.CalculateChecksum(new ChecksumCalculationRequest
             {
-                Amount = order.Amount.ToString("F2", CultureInfo.InvariantCulture),
+                Amount = payment.Amount.ToString("F2", CultureInfo.InvariantCulture),
                 Currency = transaction.MerchantCurrency.ToString(),
                 OrderId = orderId.ToString(),
                 Secret = altaSettings.CustomerInformationSharedSecret
             });
 
-            var checksumValid = PaymentRowGuard.SignatureEquals(response.Checksum, calculatedChecksum);
-
-            _logger.LogInformation($"Alta Payment Response - Checksum is {(checksumValid ? "valid" : "invalid")} CustomData {order.CustomData}");
-
-            if (!(order.CustomData ?? "").Equals(orderId.ToString(), StringComparison.InvariantCultureIgnoreCase) || !checksumValid)
+            if (payment.OrderUniqueId != orderId || !PaymentRowGuard.SignatureEquals(response.Checksum, calculatedChecksum))
             {
-                _logger.LogInformation($"Alta Payment Response - Verification Error - Order ID: {order.CustomData}");
-
-                await Events.OnErrorAsync(this, new ErrorEventArgs
-                {
-                    OrderStatus = order,
-                });
-
-                var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, Request);
+                _logger.LogError("Alta Payment Response - Failed checksum verification. " + PaymentLog.Template,
+                    payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
 
                 return StatusCode(500);
             }
 
-            _logger.LogInformation("Alta Payment Response - DigitalSignatureResponse Verified");
-
-            if (await PaymentRowGuard.TryMarkPaidAsync(_dbFac, order))
+            // Recorded once per payment: AltaPay sends both a browser response and a server notification.
+            var result = await _payments.RecordAsync(new PaymentTransaction
             {
-                try
-                {
-                    var paymentData = new PaymentData
-                    {
-                        Id = order.UniqueId,
-                        Date = DateTime.Now,
-                        CardNumber = transaction.CreditCardMaskedPan,
-                        CustomData = JsonConvert.SerializeObject(model),
-                        Amount = order.Amount.ToString(),
-                    };
+                PaymentId = payment.PaymentId,
+                Type = PaymentTransactionType.Captured,
+                Amount = payment.Amount,
+                TransactionId = transaction.TransactionId,
+                MaskedCardNumber = transaction.CreditCardMaskedPan,
+                IdempotencyKey = LegacyPaymentBridge.CaptureKey(payment.PaymentId),
+                Details =
+                [
+                    new PaymentDetail("altaPaymentId", "AltaPay payment id", transaction.PaymentId, true),
+                    new PaymentDetail("authType", "Authorization type", transaction.AuthType),
+                    new PaymentDetail("cardStatus", "Card status", transaction.CardStatus),
+                    new PaymentDetail("terminal", "Terminal", altaSettings.Terminal),
+                ],
+                RawData = JsonConvert.SerializeObject(model),
+            });
 
-                    using var db = _dbFac.GetDatabase();
-                    await db.InsertOrReplaceAsync(paymentData);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Alta Payment Response - Error saving payment data");
-                }
-
-                await Events.OnSuccessAsync(this, new SuccessEventArgs
-                {
-                    OrderStatus = order,
-                });
-
-                _logger.LogInformation($"Alta Payment Response - SUCCESS - Order ID: {order.CustomData}");
-            }
-            else
-            {
-                _logger.LogInformation($"Alta Payment Response - SUCCESS - Previously validated");
-            }
+            _logger.LogInformation("Alta Payment Response - SUCCESS. " + PaymentLog.Template + " FirstDelivery: {Recorded}",
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, result.Recorded);
 
             return Redirect(paymentSettings.SuccessUrl.ToString());
         }
         catch (Exception ex)
         {
             var transaction = model.Body.Transactions.FirstOrDefault();
-            _logger.LogError(ex, "Alta Payment Response - Failed. " + transaction?.ShopOrderId);
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
+            _logger.LogError(ex, "Alta Payment Response - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId} ShopOrderId: {ShopOrderId}",
+                payment?.OrderNumber, payment?.OrderUniqueId, transaction?.ShopOrderId);
 
             if (_settings.SendEmailAlerts)
             {
                 await _mailSvc.SendAsync(new System.Net.Mail.MailMessage
                 {
-                    Subject = "Alta Payment Response - Failed. " + transaction?.ShopOrderId,
+                    Subject = $"Alta Payment Response - Failed. Order {payment?.OrderNumber ?? "unknown"}, {transaction?.ShopOrderId}",
                     Body = $"<p>Alta Payment Response - Failed<p><br />{HttpContext.Request.GetDisplayUrl()}<br />" + ex.ToString() + "<br><br> " + JsonConvert.SerializeObject(model),
                     IsBodyHtml = true,
                 });
@@ -243,44 +190,28 @@ public class AltaResponseController : ControllerBase
     }
 
     /// <summary>
-    /// AltaPay identifies the payment by the shop order id, which other payment attempts for the same order share. <br />
-    /// Only payments created by this provider are considered.
+    /// AltaPay refers to a payment by the order id. The latest AltaPay payment of that order is the one being answered.
     /// </summary>
-    async Task<OrderStatus?> GetAltaPayOrderAsync(Guid shopOrderId)
+    async Task<OrderPayment?> FindPaymentAsync(Guid orderId)
     {
-        var customData = shopOrderId.ToString();
+        var payment = await LegacyPaymentBridge.GetOrImportByReferenceAsync(
+            _payments, _legacyOrders, Payment._ppNodeName, orderId.ToString());
 
-        await using var db = _dbFac.GetDatabase();
-        var orders = await db.OrderStatus
-            .Where(x => x.CustomData == customData)
-            .OrderBy(x => x.ReferenceId)
-            .ToListAsync();
-
-        return orders.FirstOrDefault(IsAltaPayOrder);
+        return payment != null && PaymentRowGuard.BelongsTo(payment, Payment._ppNodeName) ? payment : null;
     }
 
-    static bool IsAltaPayOrder(OrderStatus order)
+    /// <summary>The shop order id is the order id, optionally prefixed with "item;item;".</summary>
+    static bool TryGetOrderId(string? shopOrderId, out Guid orderId)
     {
-        if (!PaymentRowGuard.TryGetProvider(order, out var provider))
+        orderId = Guid.Empty;
+
+        if (string.IsNullOrWhiteSpace(shopOrderId))
         {
             return false;
         }
 
-        if (provider != null)
-        {
-            return provider.Equals(Payment._ppNodeName, StringComparison.OrdinalIgnoreCase);
-        }
-
-        // Payments created before the provider was recorded on the payment
-        try
-        {
-            var altaSettings = JsonConvert.DeserializeObject<AltaSettings>(order.EkomPaymentProviderData!);
-            return !string.IsNullOrWhiteSpace(altaSettings?.Terminal);
-        }
-        catch (Newtonsoft.Json.JsonException)
-        {
-            return false;
-        }
+        return Guid.TryParse(shopOrderId, out orderId)
+            || Guid.TryParse(shopOrderId.Split(';', StringSplitOptions.RemoveEmptyEntries).LastOrDefault(), out orderId);
     }
 
     [ApiExplorerSettings(IgnoreApi = true)]
@@ -343,48 +274,36 @@ public class AltaResponseController : ControllerBase
 
         _logger.LogInformation("Alta Payment Fail Response - Parsed OrderID {OrderId}", orderId);
 
-        OrderStatus? order;
+        OrderPayment? order;
 
         try
         {
-            order = await _orderService.GetAsync(orderId);
+            order = await FindPaymentAsync(orderId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Alta Payment Fail Response - Error getting order {OrderId}", orderId);
+            _logger.LogError(ex, "Alta Payment Fail Response - Error getting payment. OrderId: {OrderUniqueId}", orderId);
             await NotifyErrorAsync(ex, transaction.ShopOrderId, orderId, ct);
             return StatusCode(StatusCodes.Status500InternalServerError);
         }
 
         if (order is null)
         {
-            _logger.LogWarning("Alta Payment Fail Response - Unable to find order {OrderId}", orderId);
+            _logger.LogWarning("Alta Payment Fail Response - Unable to find an AltaPay payment. OrderId: {OrderUniqueId}", orderId);
             return NotFound();
         }
 
+        // The fail response carries no checksum, so nothing is recorded: the customer is only sent to the error page.
         PaymentSettings? paymentSettings;
         try
         {
-            if (string.IsNullOrWhiteSpace(order.EkomPaymentSettingsData))
-            {
-                _logger.LogWarning(
-                    "Alta Payment Fail Response - Missing EkomPaymentSettingsData for order {OrderId}",
-                    orderId
-                );
-                paymentSettings = null;
-            }
-            else
-            {
-                paymentSettings = JsonConvert.DeserializeObject<PaymentSettings>(order.EkomPaymentSettingsData);
-            }
+            paymentSettings = order.GetPaymentSettings();
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
-                "Alta Payment Fail Response - Unable to deserialize payment settings for order {OrderId}",
-                orderId
-            );
+            _logger.LogError(ex,
+                "Alta Payment Fail Response - Unable to read payment settings. " + PaymentLog.Template,
+                order.OrderNumber, order.OrderUniqueId, order.PaymentId);
             await NotifyErrorAsync(ex, transaction.ShopOrderId, orderId, ct);
             paymentSettings = null;
         }
@@ -458,28 +377,6 @@ public class AltaResponseController : ControllerBase
 
 
 
-        static bool TryGetOrderId(string? shopOrderId, out Guid orderId)
-        {
-            orderId = Guid.Empty;
-
-            if (string.IsNullOrWhiteSpace(shopOrderId))
-            {
-                return false;
-            }
-
-            // Direct GUID
-            if (Guid.TryParse(shopOrderId, out orderId))
-            {
-                return true;
-            }
-
-            // Try last part after ';'
-            var parts = shopOrderId.Split(';', StringSplitOptions.RemoveEmptyEntries);
-            var rawGuid = parts.LastOrDefault();
-
-            return Guid.TryParse(rawGuid, out orderId);
-        }
-
         async Task NotifyErrorAsync(
             Exception ex,
             string? shopOrderId,
@@ -488,11 +385,6 @@ public class AltaResponseController : ControllerBase
         {
             try
             {
-                await Events.OnErrorAsync(this, new ErrorEventArgs
-                {
-                    Exception = ex
-                });
-
                 if (_settings.SendEmailAlerts)
                 {
                     var subject = $"Alta Payment Fail Response - Failed. {shopOrderId ?? orderId?.ToString() ?? "Unknown"}";

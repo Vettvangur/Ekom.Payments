@@ -1,4 +1,5 @@
 using Ekom.Payments.Helpers;
+using Ekom.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -19,7 +20,7 @@ class Payment : IPaymentProvider
     readonly ILogger<Payment> _logger;
     readonly PaymentsConfiguration _settings;
     readonly IUmbracoService _uService;
-    readonly IOrderService _orderService;
+    readonly IOrderPayments _payments;
     readonly HttpContext _httpCtx;
     readonly IConfiguration _config;
 
@@ -30,14 +31,14 @@ class Payment : IPaymentProvider
         ILogger<Payment> logger,
         PaymentsConfiguration settings,
         IUmbracoService uService,
-        IOrderService orderService,
+        IOrderPayments payments,
         IHttpContextAccessor httpContext,
         IConfiguration config)
     {
         _logger = logger;
         _settings = settings;
         _uService = uService;
-        _orderService = orderService;
+        _payments = payments;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
         _config = config;
     }
@@ -72,25 +73,27 @@ class Payment : IPaymentProvider
 
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
 
-            // Persist in database and retrieve unique order id
-            var orderStatus = await _orderService.InsertAsync(
-                total,
+            // Store the payment on the Ekom order. The payment id is what the gateway echoes back in its callback.
+            var payment = await _payments.CreateAsync(
                 paymentSettings,
+                _ppNodeName,
+                total,
                 asynchronousExampleSettings,
-                paymentSettings.OrderUniqueId.ToString(),
-                _httpCtx
+                httpContext: _httpCtx
             ).ConfigureAwait(false);
 
             // This example shows how to construct a success url / receipt page destination
-            // adding the reference querystring allows for easy retrieval of order using the order helper on the success/receipt page
+            // adding the reference querystring allows the receipt page to find the payment
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
-            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + orderStatus.UniqueId);
+            paymentSettings.SuccessUrl = PaymentsUriHelper.AddQueryString(paymentSettings.SuccessUrl, "?reference=" + payment.PaymentId);
 
             var cancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
             var callbackUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
 
 
-            _logger.LogInformation("AsynchronousExample Payment Request - Amount: {Total} OrderId: {OrderUniqueId}", total, orderStatus.UniqueId);
+            _logger.LogInformation(
+                "AsynchronousExample Payment Request - OrderNumber: {OrderNumber} OrderId: {OrderUniqueId} PaymentId: {PaymentId} Amount: {Total}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId, payment.PaymentId, total);
 
             // If your payment provider expects a client initiated post request to send the user to it's payment portal
             // the following form helper is useful.
@@ -105,11 +108,9 @@ class Payment : IPaymentProvider
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AsynchronousExample Payment Request - Payment Request Failed");
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
+            _logger.LogError(ex,
+                "AsynchronousExample Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }
     }

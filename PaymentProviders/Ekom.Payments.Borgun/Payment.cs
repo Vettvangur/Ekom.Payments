@@ -1,5 +1,5 @@
 using Ekom.Payments.Helpers;
-using Ekom.Payments.Providers;
+using Ekom.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -21,7 +21,7 @@ class Payment : IPaymentProvider
     readonly ILogger<Payment> _logger;
     readonly PaymentsConfiguration _settings;
     readonly IUmbracoService _uService;
-    readonly IOrderService _orderService;
+    readonly IOrderPayments _payments;
     readonly HttpContext _httpCtx;
     readonly IConfiguration _config;
 
@@ -32,14 +32,14 @@ class Payment : IPaymentProvider
         ILogger<Payment> logger,
         PaymentsConfiguration settings,
         IUmbracoService uService,
-        IOrderService orderService,
+        IOrderPayments payments,
         IHttpContextAccessor httpContext,
         IConfiguration config)
     {
         _logger = logger;
         _settings = settings;
         _uService = uService;
-        _orderService = orderService;
+        _payments = payments;
         _httpCtx = httpContext.HttpContext ?? throw new NotSupportedException("Payment requests require an httpcontext");
         _config = config;
     }
@@ -80,9 +80,12 @@ class Payment : IPaymentProvider
 
         paymentSettings.Currency ??= "ISK";
 
+        using var scope = PaymentLog.BeginScope(_logger, paymentSettings, _ppNodeName);
+
         try
         {
-            _logger.LogInformation("Borgun Payment Request - Start");
+            _logger.LogInformation("Borgun Payment Request - Start. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
 
             var borgunSettings = paymentSettings.CustomSettings.ContainsKey(typeof(BorgunSettings))
                 ? (paymentSettings.CustomSettings[typeof(BorgunSettings)] as BorgunSettings)!
@@ -157,17 +160,17 @@ class Payment : IPaymentProvider
                 formValues.Add("pagetype", "1");
             }
 
-            // Persist in database and retrieve unique order id
-            var orderStatus = await _orderService.InsertAsync(
-                total,
+            // Store the payment on the Ekom order. Borgun echoes the payment id back as "reference".
+            var payment = await _payments.CreateAsync(
                 paymentSettings,
-                PaymentRowGuard.Stamp(borgunSettings, _ppNodeName),
-                paymentSettings.OrderUniqueId.ToString(),
-                _httpCtx
+                _ppNodeName,
+                total,
+                borgunSettings,
+                httpContext: _httpCtx
             ).ConfigureAwait(false);
 
             // Borgun only supports specific types of order id's
-            var borgunOrderId = GetBorgunOrderId(paymentSettings, orderStatus.UniqueId);
+            var borgunOrderId = GetBorgunOrderId(paymentSettings, payment.PaymentId);
 
             ArgumentNullException.ThrowIfNull(borgunSettings.SecretCode);
 
@@ -184,10 +187,11 @@ class Payment : IPaymentProvider
             );
 
             formValues.Add("checkhash", checkHash);
-            formValues.Add("reference", orderStatus.UniqueId.ToString());
+            formValues.Add("reference", payment.PaymentId.ToString());
             formValues.Add("orderid", borgunOrderId);
 
-            _logger.LogInformation("Borgun Payment Request - Amount: {Total} OrderId: {OrderUniqueId}", total, orderStatus.UniqueId);
+            _logger.LogInformation("Borgun Payment Request - " + PaymentLog.Template + " Amount: {Total}",
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, total);
 
             var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
 
@@ -195,11 +199,8 @@ class Payment : IPaymentProvider
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Borgun Payment Request - Payment Request Failed");
-            await Events.OnErrorAsync(this, new ErrorEventArgs
-            {
-                Exception = ex,
-            });
+            _logger.LogError(ex, "Borgun Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+                paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }
     }

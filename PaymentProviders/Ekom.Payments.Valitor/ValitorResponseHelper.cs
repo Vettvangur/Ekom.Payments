@@ -1,4 +1,6 @@
+using Ekom.Models.Payments;
 using Ekom.Payments.Helpers;
+using Ekom.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -13,18 +15,18 @@ public class ValitorResponseHelper
 {
     readonly ILogger<ValitorResponseHelper> _logger;
     readonly IConfiguration _configuration;
-    readonly IOrderService _orderSvc;
+    readonly IOrderPayments _payments;
 
     /// <summary>
     /// ctor
     /// </summary>
     public ValitorResponseHelper(
         ILogger<ValitorResponseHelper> logger,
-        IOrderService orderSvc,
+        IOrderPayments payments,
         IConfiguration configuration)
     {
         _logger = logger;
-        _orderSvc = orderSvc;
+        _payments = payments;
         _configuration = configuration;
     }
 
@@ -32,12 +34,12 @@ public class ValitorResponseHelper
     /// Gets Order
     /// Only returns <see cref="OrderStatus"/> on successful verification
     /// </summary>
-    public async Task<OrderStatus?> GetOrder(string reference)
+    public async Task<OrderPayment?> GetOrder(string reference)
     {
         if (!string.IsNullOrEmpty(reference)
         && Guid.TryParse(reference, out var guid))
         {
-            return await _orderSvc.GetAsync(guid);
+            return await _payments.GetAsync(guid);
         }
         else
         {
@@ -50,7 +52,7 @@ public class ValitorResponseHelper
     /// This helper can be invoked in the view or controller that receives the redirect from Valitor.
     /// Only returns <see cref="OrderStatus"/> on successful verification
     /// </summary>
-    public async Task<OrderStatus?> Verify(
+    public async Task<OrderPayment?> Verify(
         Response valitorResp, 
         string verificationcode = null)
     {
@@ -69,7 +71,7 @@ public class ValitorResponseHelper
         {
             if (Guid.TryParse(valitorResp.ReferenceNumber, out var guid))
             {
-                return await _orderSvc.GetAsync(guid);
+                return await _payments.GetAsync(guid);
             }
         }
 
