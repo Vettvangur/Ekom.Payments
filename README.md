@@ -49,7 +49,7 @@ Offline payments (bank transfer, pay on pickup) need no package from this reposi
 
 `Ekom.Payments.Core` is a small library shared by the providers and comes with them. The `Ekom.Payments.U10`, `U17`, `U18`, `U19` and `Ekom.Payments.AspNetCore` packages no longer exist.
 
-These packages require Ekom 1.1 or later and do not run without Ekom. Upgrading from Ekom.Payments 1.0 is described in Ekom's `docs/upgrading/payments.md`, and the payment model in `docs/guides/payments.md`.
+These packages require Ekom 1.2 or later and do not run without Ekom. Upgrading from Ekom.Payments 1.0 is described in Ekom's `docs/upgrading/payments.md`, and the payment model in `docs/guides/payments.md`.
 
 ### Writing a provider
 
