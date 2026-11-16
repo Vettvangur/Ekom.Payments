@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/Vettvangur/Ekom.Payments/compare/Ekom.Payments.TeyaConsumerloans-v1.0.0...Ekom.Payments.TeyaConsumerloans-v1.1.0) (2026-11-16)
+
+
+### Features
+
+* build the payment providers on Ekom's order payments ([#118](https://github.com/Vettvangur/Ekom.Payments/issues/118)) ([ede309e](https://github.com/Vettvangur/Ekom.Payments/commit/ede309e72485a176a7726d5dfb7a6a58de7de20d))
+
 ## [1.0.0](https://github.com/Vettvangur/Ekom.Payments/compare/Ekom.Payments.TeyaConsumerloans-v0.2.98...Ekom.Payments.TeyaConsumerloans-v1.0.0) (2026-11-12)
 
 
