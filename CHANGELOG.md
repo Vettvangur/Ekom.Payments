@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.3](https://github.com/Vettvangur/Ekom.Payments/compare/Ekom.Payments-v1.1.2...Ekom.Payments-v1.1.3) (2026-11-18)
+
+
+### Bug Fixes
+
+* correct amount, verification and redirect defects in the gateways ([#125](https://github.com/Vettvangur/Ekom.Payments/issues/125)) ([36ffbe3](https://github.com/Vettvangur/Ekom.Payments/commit/36ffbe33c8126ba747db9d9cd0985d6e9ea3cc9f))
+
 ## [1.1.2](https://github.com/Vettvangur/Ekom.Payments/compare/Ekom.Payments-v1.1.1...Ekom.Payments-v1.1.2) (2026-11-18)
 
 

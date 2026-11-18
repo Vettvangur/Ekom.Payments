@@ -6,7 +6,7 @@
         <Nullable>enable</Nullable>
 
         <PackageId>Ekom.Payments.TeyaConsumerloans</PackageId>
-        <Version>1.1.0</Version>
+        <Version>1.1.1</Version>
         <!-- Minimum published Core version used when packaging this provider. -->
         <CorePackageVersion>1.1.0</CorePackageVersion>
         <Title>Ekom Payments Teya Consumer Loans</Title>

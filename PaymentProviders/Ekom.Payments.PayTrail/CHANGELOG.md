@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/Vettvangur/Ekom.Payments/compare/Ekom.Payments.PayTrail-v1.1.0...Ekom.Payments.PayTrail-v1.1.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* correct amount, verification and redirect defects in the gateways ([#125](https://github.com/Vettvangur/Ekom.Payments/issues/125)) ([36ffbe3](https://github.com/Vettvangur/Ekom.Payments/commit/36ffbe33c8126ba747db9d9cd0985d6e9ea3cc9f))
+
 ## [1.1.0](https://github.com/Vettvangur/Ekom.Payments/compare/Ekom.Payments.PayTrail-v1.0.0...Ekom.Payments.PayTrail-v1.1.0) (2026-11-16)
 
 
