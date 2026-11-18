@@ -46,6 +46,7 @@ public class NetgiroResponseController : ControllerBase
     /// <summary>
     /// Receives a callback from Netgiro when a customer completes payment.
     /// Verifies it and records the capture on the Ekom order; Ekom then completes the checkout.
+    /// A cancellation signed with <c>NetgiroSignature</c> is recorded as cancelled.
     /// </summary>
     [ApiExplorerSettings(IgnoreApi = true)]
     [HttpGet, HttpPost]
@@ -106,15 +107,15 @@ public class NetgiroResponseController : ControllerBase
                 return BadRequest();
             }
 
-            if (string.IsNullOrEmpty(netgiroResponse.NetgiroSignature))
+            var statusSigned = !string.IsNullOrEmpty(netgiroResponse.NetgiroSignature);
+            if (!statusSigned)
             {
                 _logger.LogWarning(
                     "Netgiro Payment Response - Verified without NetgiroSignature, amount and status were not part of the signature. " + PaymentLog.Template,
                     payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
             }
 
-            // Recorded once per payment: Netgiro confirms twice (status 1, then 2).
-            var result = await _payments.RecordAsync(new PaymentTransaction
+            var transaction = new PaymentTransaction
             {
                 PaymentId = payment.PaymentId,
                 Type = PaymentTransactionType.Captured,
@@ -136,7 +137,28 @@ public class NetgiroResponseController : ControllerBase
                     netgiroResponse.Status,
                     netgiroResponse.ConfirmationCode,
                 }),
-            });
+            };
+
+            // Only NetgiroSignature covers the status, so only a callback carrying it can say the payment was canceled.
+            if (statusSigned && netgiroResponse.Status == CanceledStatus)
+            {
+                var cancelled = await _payments.RecordAsync(transaction with
+                {
+                    Type = PaymentTransactionType.Cancelled,
+                    // Defaults to payment id + type + transaction id: a repeated callback is stored once.
+                    IdempotencyKey = null,
+                    Message = "Canceled at Netgiro",
+                });
+
+                _logger.LogInformation(
+                    "Netgiro Payment Response - Canceled. " + PaymentLog.Template + " FirstDelivery: {Recorded}",
+                    payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, cancelled.Recorded);
+
+                return Ok();
+            }
+
+            // Recorded once per payment: Netgiro confirms twice (status 1, then 2).
+            var result = await _payments.RecordAsync(transaction);
 
             _logger.LogInformation(
                 "Netgiro Payment Response - SUCCESS. " + PaymentLog.Template + " FirstDelivery: {Recorded}",
@@ -167,6 +189,11 @@ public class NetgiroResponseController : ControllerBase
         }
     }
 
+    // Netgiro statuses: 1 - unconfirmed, the payment is confirmed by our reply to this callback. 2 - confirmed. 5 - canceled
+    const string UnconfirmedStatus = "1";
+    const string ConfirmedStatus = "2";
+    const string CanceledStatus = "5";
+
     internal static bool IsVerified(
         Response netgiroResponse,
         Guid paymentId,
@@ -192,10 +219,11 @@ public class NetgiroResponseController : ControllerBase
                 return false;
             }
 
-            // 1 - unconfirmed, the payment is confirmed by our reply to this callback. 2 - confirmed. 5 - canceled
-            if (netgiroResponse.Status != "1" && netgiroResponse.Status != "2")
+            if (netgiroResponse.Status != UnconfirmedStatus
+            && netgiroResponse.Status != ConfirmedStatus
+            && netgiroResponse.Status != CanceledStatus)
             {
-                rejection = "Status is not unconfirmed or confirmed";
+                rejection = "Status is not unconfirmed, confirmed or canceled";
                 return false;
             }
 
@@ -219,6 +247,13 @@ public class NetgiroResponseController : ControllerBase
         }
         else
         {
+            // The older signature covers neither the amount nor the status.
+            if (netgiroSettings.RequireNetgiroSignature)
+            {
+                rejection = "NetgiroSignature missing and requireNetgiroSignature is on";
+                return false;
+            }
+
             if (string.IsNullOrEmpty(netgiroResponse.ConfirmationCode))
             {
                 rejection = "ConfirmationCode missing";
