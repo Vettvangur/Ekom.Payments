@@ -1,5 +1,5 @@
 {
-  ".": "1.1.1",
+  ".": "1.1.2",
   "PaymentProviders/Ekom.Payments.Valitor": "1.1.0",
   "PaymentProviders/Ekom.Payments.Borgun": "1.1.0",
   "PaymentProviders/Ekom.Payments.Netgiro": "1.1.0",
@@ -9,5 +9,5 @@
   "PaymentProviders/Ekom.Payments.PayTrail": "1.1.0",
   "PaymentProviders/Ekom.Payments.TeyaConsumerloans": "1.1.0",
   "PaymentProviders/Ekom.Payments.Stripe": "1.1.1",
-  "PaymentProviders/Ekom.Payments.PayPal": "1.1.0"
+  "PaymentProviders/Ekom.Payments.PayPal": "1.1.1"
 }
