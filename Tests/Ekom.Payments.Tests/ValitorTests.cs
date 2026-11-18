@@ -5,6 +5,7 @@ using Ekom.Payments.Valitor;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Xunit;
@@ -122,7 +123,7 @@ public sealed class ValitorTests
     }
 
     [Fact]
-    public async Task HelperDoesNotVerifyWithoutAVerificationCodeAndReturnsTheOrdersPayment()
+    public async Task HelperVerifiesTheSha256SignatureValitorSendsWithTheStoredVerificationCode()
     {
         var site = new ProviderTestSite();
         var (payment, _) = await RequestAsync(site, 1990);
@@ -130,24 +131,84 @@ public sealed class ValitorTests
             NullLogger<ValitorResponseHelper>.Instance, site.Payments, new ConfigurationBuilder().Build());
         var reference = payment.PaymentId.ToString();
 
+        // Signed like the callback the response controller accepts.
+        var verified = await helper.Verify(new ValitorResponse
+        {
+            ReferenceNumber = reference,
+            DigitalSignatureResponse = Sha256Hex(Code + reference),
+        });
+        Assert.Equal(site.OrderId, verified!.OrderUniqueId);
+
+        Assert.NotNull(await helper.Verify(
+            new ValitorResponse { ReferenceNumber = reference, DigitalSignatureResponse = Sha256Hex(Code + reference) },
+            Code));
+        // The old MD5 signature and a signature without the code are not accepted.
         Assert.Null(await helper.Verify(new ValitorResponse
         {
             ReferenceNumber = reference,
-            DigitalSignatureResponse = CryptoHelpers.GetMD5StringSum(reference),
+            DigitalSignatureResponse = CryptoHelpers.GetMD5StringSum(Code + reference),
         }));
-        var verified = await helper.Verify(
-            new ValitorResponse
-            {
-                ReferenceNumber = reference,
-                DigitalSignatureResponse = CryptoHelpers.GetMD5StringSum(Code + reference),
-            },
-            Code);
-        Assert.Equal(site.OrderId, verified!.OrderUniqueId);
+        Assert.Null(await helper.Verify(new ValitorResponse
+        {
+            ReferenceNumber = reference,
+            DigitalSignatureResponse = Sha256Hex(reference),
+        }));
     }
 
-    static async Task<(OrderPayment Payment, Dictionary<string, string> Form)> RequestAsync(ProviderTestSite site, decimal total)
+    [Theory]
+    [InlineData(19.99, "20")]
+    [InlineData(19.49, "19")]
+    [InlineData(19.5, "20")]
+    [InlineData(1990, "1990")]
+    public async Task UnitPriceIsRoundedToWholeUnitsAndSignedAsSent(decimal price, string expected)
+    {
+        var site = new ProviderTestSite();
+
+        var (payment, form) = await RequestAsync(site, price);
+
+        Assert.Equal(expected, form["Product_1_Price"]);
+        Assert.Equal(ExpectedSignature(payment, form), form["DigitalSignature"]);
+    }
+
+    [Fact]
+    public async Task QuantityAndDiscountAreSentAndSignedWithTheInvariantCulture()
+    {
+        var site = new ProviderTestSite();
+        var culture = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("is-IS");
+        try
+        {
+            var (payment, form) = await RequestAsync(site, 1990, order =>
+            {
+                order.Quantity = 1.5m;
+                order.Discount = 12.5m;
+            });
+
+            Assert.Equal("1.5", form["Product_1_Quantity"]);
+            Assert.Equal("12.5", form["Product_1_Discount"]);
+            Assert.Equal(ExpectedSignature(payment, form), form["DigitalSignature"]);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+    }
+
+    /// <summary>
+    /// The request signature: verification code, "0", each line's quantity, price and discount, merchant id,
+    /// reference number, success url, server side url and currency.
+    /// </summary>
+    static string ExpectedSignature(OrderPayment payment, Dictionary<string, string> form)
+        => Sha256Hex(Code + "0"
+            + form["Product_1_Quantity"] + form["Product_1_Price"] + form["Product_1_Discount"]
+            + form["MerchantID"] + payment.PaymentId + form["PaymentSuccessfulURL"]
+            + form["PaymentSuccessfulServerSideURL"] + form["Currency"]);
+
+    static async Task<(OrderPayment Payment, Dictionary<string, string> Form)> RequestAsync(
+        ProviderTestSite site, decimal total, Action<OrderItem>? order = null)
     {
         var settings = site.Settings(total);
+        foreach (var item in settings.Orders) order?.Invoke(item);
         settings.CustomSettings[typeof(ValitorSettings)] = new ValitorSettings
         {
             MerchantId = "1", VerificationCode = Code,

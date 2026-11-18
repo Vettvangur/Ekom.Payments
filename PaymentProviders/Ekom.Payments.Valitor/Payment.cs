@@ -155,13 +155,18 @@ public class Payment : IPaymentProvider
 
                 formValues.Add($"Product_{lineNumber}_Description",
                     HttpUtility.UrlEncode(order.Title, Encoding.GetEncoding("ISO-8859-1")));
-                formValues.Add($"Product_{lineNumber}_Quantity", order.Quantity.ToString());
-                formValues.Add($"Product_{lineNumber}_Price", ((int)order.Price).ToString());
-                formValues.Add($"Product_{lineNumber}_Discount", order.Discount.ToString());
+                // The same strings are sent and signed, formatted the same on every server.
+                var quantity = order.Quantity.ToString(CultureInfo.InvariantCulture);
+                var price = FormatPrice(order.Price);
+                var discount = order.Discount.ToString(CultureInfo.InvariantCulture);
 
-                sb.Append(order.Quantity.ToString());
-                sb.Append(((int)order.Price).ToString());
-                sb.Append(order.Discount.ToString());
+                formValues.Add($"Product_{lineNumber}_Quantity", quantity);
+                formValues.Add($"Product_{lineNumber}_Price", price);
+                formValues.Add($"Product_{lineNumber}_Discount", discount);
+
+                sb.Append(quantity);
+                sb.Append(price);
+                sb.Append(discount);
             }
 
             sb.Append(valitorSettings.MerchantId);
@@ -203,6 +208,13 @@ public class Payment : IPaymentProvider
             throw;
         }
     }
+
+    /// <summary>
+    /// The unit price as sent to Valitor: whole currency units, rounded half away from zero.
+    /// The payment page has only ever been sent whole units by this provider, decimals are not known to be accepted.
+    /// </summary>
+    internal static string FormatPrice(decimal price)
+        => Math.Round(price, 0, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture);
 
     public string ParseSupportedLanguages(string language)
     {
