@@ -1,6 +1,7 @@
 using Ekom.Payments.AltaPay.Model;
 using Ekom.Payments.Helpers;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
@@ -21,6 +22,12 @@ public class Payment : IPaymentProvider
     /// Ekom.Payments ResponseController
     /// </summary>
     const string reportPath = "/ekom/payments/altaresponse";
+
+    /// <summary>
+    /// Marks the address AltaPay returns the customer's browser to (callback_ok),
+    /// so the response controller can tell it from the server notification.
+    /// </summary>
+    internal const string BrowserQueryKey = "browser";
 
     readonly ILogger<Payment> _logger;
     readonly PaymentsConfiguration _settings;
@@ -71,12 +78,17 @@ public class Payment : IPaymentProvider
             var altaSettings = paymentSettings.CustomSettings.ContainsKey(typeof(AltaSettings))
                 ? paymentSettings.CustomSettings[typeof(AltaSettings)] as AltaSettings
                 : new AltaSettings();
+            altaSettings ??= new AltaSettings();
 
             _uService.PopulatePaymentProviderProperties(
                 paymentSettings,
                 _ppNodeName,
                 altaSettings,
                 AltaSettings.Properties);
+
+            // Checked before the payment is created: without these AltaPay cannot be asked for a payment page,
+            // and without the shared secret its answer cannot be verified.
+            EnsureRequiredSettings(altaSettings);
 
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
 
@@ -98,10 +110,11 @@ public class Payment : IPaymentProvider
                 _httpCtx.Request.Host = new HostString(altaSettings.HostOverride);
             }
 
-            var okUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request);
+            var okUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath + "?" + BrowserQueryKey + "=true", UriKind.Relative), _httpCtx.Request);
             var failUrl = PaymentsUriHelper.EnsureFullUri(new Uri(reportPath + "/fail", UriKind.Relative), _httpCtx.Request);
             var reportUrl = paymentSettings.ReportUrl == null ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request) : paymentSettings.ReportUrl;
-            var formUrl = altaSettings.PaymentFormUrl == null ? null : PaymentsUriHelper.EnsureFullUri(new Uri(altaSettings.PaymentFormUrl, UriKind.Relative), _httpCtx.Request);
+            // Optional: a path on this site or an absolute URL
+            var formUrl = string.IsNullOrWhiteSpace(altaSettings.PaymentFormUrl) ? null : PaymentsUriHelper.EnsureFullUri(altaSettings.PaymentFormUrl.Trim(), _httpCtx.Request);
 
             _logger.LogInformation("Alta Payment Request - " + PaymentLog.Template + " Amount: {Total}",
                 payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, total);
@@ -118,9 +131,9 @@ public class Payment : IPaymentProvider
                 { "amount", total.ToString("0.00", CultureInfo.InvariantCulture) },
                 { "currency", paymentSettings.Currency },
                 // Return URLs
-                { "config[callback_ok]", okUrl.ToString().Replace("//ekom","/ekom", StringComparison.InvariantCultureIgnoreCase) },
-                { "config[callback_fail]", failUrl.ToString().Replace("//ekom","/ekom", StringComparison.InvariantCultureIgnoreCase) },
-                { "config[callback_notification]", reportUrl.ToString().Replace("//ekom","/ekom", StringComparison.InvariantCultureIgnoreCase) },
+                { "config[callback_ok]", WithoutDoubleSlashes(okUrl) },
+                { "config[callback_fail]", WithoutDoubleSlashes(failUrl) },
+                { "config[callback_notification]", WithoutDoubleSlashes(reportUrl) },
                 // Optional parameters
                 { "language", ParseSupportedLanguages(paymentSettings.Language) },
                 { "payment_source", "eCommerce" },
@@ -128,9 +141,9 @@ public class Payment : IPaymentProvider
                 { "transaction_info[0]", paymentSettings.Store }
             };
 
-            if (!string.IsNullOrWhiteSpace(formUrl.ToString()))
+            if (formUrl != null)
             {
-                form["config[callback_form]"] = formUrl.ToString().Replace("//ekom", "/ekom", StringComparison.InvariantCultureIgnoreCase);
+                form["config[callback_form]"] = WithoutDoubleSlashes(formUrl);
             }
 
             foreach (var (index, line) in paymentSettings.Orders.Select((order, idx) => new KeyValuePair<int,OrderItem>(idx, order)))
@@ -153,7 +166,11 @@ public class Payment : IPaymentProvider
 
             if (string.IsNullOrEmpty(url))
             {
-                url = errorUrl.ToString() + "?errorStatus=paymenterror&errorMessage=We could no process your payment. Try again or contact Nespresso.";
+                url = QueryHelpers.AddQueryString(errorUrl.ToString(), new Dictionary<string, string?>
+                {
+                    ["errorStatus"] = "paymenterror",
+                    ["errorMessage"] = "We could not process your payment. Please try again.",
+                });
                 _logger.LogError("Alta Payment Request - Error creating payment. " + PaymentLog.Template + " Message: {ErrorMessage} Response: {Response}",
                     payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, errorMessage, contentString);
             }
@@ -168,6 +185,47 @@ public class Payment : IPaymentProvider
                 paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }
+    }
+
+    static void EnsureRequiredSettings(AltaSettings settings)
+    {
+        static InvalidOperationException Missing(string name)
+            => new($"AltaPay setting {name} is not configured. Set it on the {_ppNodeName} payment provider node, under Ekom:Payments:{_ppNodeName} or with SetAltaPaySettings.");
+
+        if (string.IsNullOrWhiteSpace(settings.Terminal)) throw Missing(nameof(AltaSettings.Terminal));
+        if (string.IsNullOrWhiteSpace(settings.ApiUserName)) throw Missing(nameof(AltaSettings.ApiUserName));
+        if (string.IsNullOrWhiteSpace(settings.ApiPassword)) throw Missing(nameof(AltaSettings.ApiPassword));
+        if (settings.BaseAddress == null || !settings.BaseAddress.IsAbsoluteUri) throw Missing(nameof(AltaSettings.BaseAddress) + " (an absolute URL)");
+        if (string.IsNullOrWhiteSpace(settings.CustomerInformationSharedSecret)) throw Missing(nameof(AltaSettings.CustomerInformationSharedSecret));
+
+        if (!string.IsNullOrWhiteSpace(settings.PaymentFormUrl)
+            && !Uri.IsWellFormedUriString(settings.PaymentFormUrl.Trim(), UriKind.RelativeOrAbsolute))
+        {
+            throw new InvalidOperationException(
+                $"AltaPay setting {nameof(AltaSettings.PaymentFormUrl)} \"{settings.PaymentFormUrl}\" is not a valid path or absolute URL.");
+        }
+    }
+
+    /// <summary>
+    /// Removes empty segments from the path, f.x. when HostOverride or ReportUrl end with a slash.
+    /// The scheme and host are left alone.
+    /// </summary>
+    internal static string WithoutDoubleSlashes(Uri uri)
+    {
+        if (!uri.IsAbsoluteUri || !uri.AbsolutePath.Contains("//", StringComparison.Ordinal))
+        {
+            return uri.ToString();
+        }
+
+        var builder = new UriBuilder(uri);
+        var path = builder.Path;
+        while (path.Contains("//", StringComparison.Ordinal))
+        {
+            path = path.Replace("//", "/", StringComparison.Ordinal);
+        }
+        builder.Path = path;
+
+        return builder.Uri.ToString();
     }
 
     private static string ParseSupportedLanguages(string language)
