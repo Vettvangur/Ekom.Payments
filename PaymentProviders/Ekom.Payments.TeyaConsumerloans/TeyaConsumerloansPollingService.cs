@@ -21,7 +21,8 @@ namespace Ekom.Payments.TeyaConsumerloans;
 /// Callers enqueue an order via <see cref="Enqueue"/> and return immediately.
 /// The service owns the per-order <see cref="CancellationTokenSource"/> lifetime and
 /// tracks all active polling tasks so they finish gracefully on host shutdown.
-/// New attempts are marked in their saved payment settings for one-time startup recovery.
+/// After a restart, loans whose payment has had nothing recorded since its request are picked up again
+/// (<see cref="IOrderPayments.GetOpenPaymentsAsync"/>).
 /// </para>
 /// </summary>
 public class TeyaConsumerloansPollingService : BackgroundService
@@ -285,6 +286,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
     {
         string? lastStatus = null;
         var statusCheckFailed = false;
+        var completion = new Completion();
 
         while (true)
         {
@@ -328,10 +330,29 @@ public class TeyaConsumerloansPollingService : BackgroundService
 
             if (string.Equals(status, SuccessStatus, StringComparison.OrdinalIgnoreCase))
             {
-                // Do not retry validation or success callbacks as part of status
-                // polling. Their existing error handling remains unchanged.
-                await MarkAsPaid(request).ConfigureAwait(false);
-                break;
+                try
+                {
+                    await MarkAsPaid(request, completion).ConfigureAwait(false);
+                    break;
+                }
+                catch (Exception ex) when (!checkOnce && !cancellationToken.IsCancellationRequested)
+                {
+                    // An approved loan whose validation or recording failed for a passing reason is tried again
+                    // within the monitoring window, instead of waiting for the next application restart.
+                    if (!await IsRetryableCompletionFailureAsync(request, completion, ex).ConfigureAwait(false))
+                    {
+                        throw;
+                    }
+
+                    _logger.LogWarning(ex, "Teya Consumer Loans payment completion failed; retrying. PaymentId: {PaymentId}", request.PaymentId);
+                    if (!completion.Retrying)
+                    {
+                        await ActivityAsync(request, $"Recording the approved loan failed ({ex.GetType().Name}); retrying within the payment monitoring window.", LogLevel.Warning).ConfigureAwait(false);
+                        completion.Retrying = true;
+                    }
+                    await Task.Delay(PollingInterval, timeProvider, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
             }
 
             if (checkOnce)
@@ -343,6 +364,63 @@ public class TeyaConsumerloansPollingService : BackgroundService
 
             await Task.Delay(PollingInterval, timeProvider, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Whether completing an approved loan is worth another try. A validation fails for a passing reason when
+    /// Teya could not be reached or answered with 408, 429 or 5xx. A validated loan whose recording failed is
+    /// tried again, without validating it again, unless the capture was stored and only completing the order's
+    /// checkout failed.
+    /// </summary>
+    async Task<bool> IsRetryableCompletionFailureAsync(PollingRequest request, Completion completion, Exception exception)
+    {
+        if (completion.Contract == null)
+        {
+            return exception is HttpRequestException httpError && IsTransient(httpError)
+                || exception is OperationCanceledException;
+        }
+
+        try
+        {
+            return !await IsCapturedAsync(request.PaymentId).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Teya Consumer Loans could not check whether the capture was stored. PaymentId: {PaymentId}", request.PaymentId);
+            // The capture is recorded once per payment, so trying again cannot record it twice.
+            return true;
+        }
+    }
+
+    async Task<bool> IsCapturedAsync(Guid paymentId)
+    {
+        var payment = await _payments.GetAsync(paymentId).ConfigureAwait(false);
+        if (payment == null) return false;
+
+        var orderPayments = await _payments.GetForOrderAsync(payment.OrderUniqueId).ConfigureAwait(false);
+        return orderPayments.Attempts.Any(x => x.PaymentId == paymentId && x.CapturedUtc != null);
+    }
+
+    /// <summary>
+    /// The URL Teya sends the customer back to after validation: the success URL with the loan token added
+    /// to its query string, whether or not it already has one.
+    /// </summary>
+    internal static string ValidationRedirectUrl(Uri successUrl, string token)
+    {
+        var builder = new UriBuilder(successUrl);
+        var query = builder.Query.TrimStart('?');
+        builder.Query = (query.Length == 0 ? "" : query + "&") + "token=" + Uri.EscapeDataString(token);
+        return builder.Uri.ToString();
+    }
+
+    /// <summary>What is known about completing an approved loan across retries.</summary>
+    sealed class Completion
+    {
+        /// <summary>Set once Teya validated the loan, so a retry records it without validating it again.</summary>
+        public ContractInfoCompact? Contract { get; set; }
+
+        /// <summary>A retry was announced in the order's activity log and the email alert was sent.</summary>
+        public bool Retrying { get; set; }
     }
 
     static bool IsTransient(HttpRequestException exception)
@@ -400,7 +478,7 @@ public class TeyaConsumerloansPollingService : BackgroundService
         }
     }
 
-    async Task MarkAsPaid(PollingRequest request)
+    async Task MarkAsPaid(PollingRequest request, Completion completion)
     {
         ArgumentNullException.ThrowIfNull(request.Settings.MerchantId);
 
@@ -423,15 +501,20 @@ public class TeyaConsumerloansPollingService : BackgroundService
 
         try
         {
-            var validationRequest = new ValidateRequest
+            var contractInfo = completion.Contract;
+            if (contractInfo == null)
             {
-                Token = request.Token,
-                RedirectUrl = $"{request.RedirectUrl}&token={request.Token}",
-                MerchantNumber = request.Settings.MerchantId,
-            };
-            var contractInfo = await _client.ValidateLoanAsync(request.Settings, validationRequest).ConfigureAwait(false);
+                var validationRequest = new ValidateRequest
+                {
+                    Token = request.Token,
+                    RedirectUrl = ValidationRedirectUrl(request.RedirectUrl, request.Token),
+                    MerchantNumber = request.Settings.MerchantId,
+                };
+                contractInfo = await _client.ValidateLoanAsync(request.Settings, validationRequest).ConfigureAwait(false);
+                completion.Contract = contractInfo;
 
-            await ActivityAsync(request, "Loan validated; recording the payment and completing the Ekom order.", success: true).ConfigureAwait(false);
+                await ActivityAsync(request, "Loan validated; recording the payment and completing the Ekom order.", success: true).ConfigureAwait(false);
+            }
 
             // Recording the capture completes the order's checkout, which needs an Umbraco context.
             using (_paymentExecutionContext.EnsureContext())
@@ -460,7 +543,8 @@ public class TeyaConsumerloansPollingService : BackgroundService
             _logger.LogError(ex, "Teya Consumer Loans Response - Failed. " + PaymentLog.Template,
                 payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
 
-            if (_settings.SendEmailAlerts)
+            // One alert per loan: a failure that is retried is not mailed again.
+            if (_settings.SendEmailAlerts && !completion.Retrying)
             {
                 using var paymentContext = _paymentExecutionContext.EnsureContext();
 

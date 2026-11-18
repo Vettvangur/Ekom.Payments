@@ -119,7 +119,7 @@ public class Payment : IPaymentProvider
             };
             _pollingService.Enqueue(pollingRequest);
 
-            var redirectUrl = new Uri(teyaSettings.LoanPortalUrl!, token);
+            var redirectUrl = LoanPortalRedirect(teyaSettings.LoanPortalUrl!, token);
             var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
             return FormHelper.Redirect(redirectUrl.ToString(), cspNonce);
         }
@@ -131,18 +131,31 @@ public class Payment : IPaymentProvider
         }
     }
 
+    /// <summary>
+    /// Every setting the request needs is checked here, before a loan token is created at Teya or a payment is stored.
+    /// </summary>
     static void ValidateLoanSettings(TeyaConsumerloansSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings.ApiBaseUrl);
         ArgumentException.ThrowIfNullOrEmpty(settings.Username);
         ArgumentException.ThrowIfNullOrEmpty(settings.Password);
+        ArgumentNullException.ThrowIfNull(settings.LoanPortalUrl);
         ArgumentException.ThrowIfNullOrEmpty(settings.MerchantId);
         ArgumentNullException.ThrowIfNull(settings.LoanTypeId);
         ArgumentNullException.ThrowIfNull(settings.NumberOfPayments);
         ArgumentNullException.ThrowIfNull(settings.FlexibleNumberOfPayments);
-        ArgumentException.ThrowIfNullOrEmpty(settings.MerchantId);
         ArgumentNullException.ThrowIfNull(settings.ProgressValidMinutes);
         ArgumentNullException.ThrowIfNull(settings.TokenValidMinutes);
+
+        if (!settings.ApiBaseUrl.IsAbsoluteUri)
+        {
+            throw new ArgumentException("Teya Consumer Loans apiBaseUrl must be an absolute URL.", nameof(settings.ApiBaseUrl));
+        }
+
+        if (!settings.LoanPortalUrl.IsAbsoluteUri)
+        {
+            throw new ArgumentException("Teya Consumer Loans loanPortalUrl must be an absolute URL.", nameof(settings.LoanPortalUrl));
+        }
 
         if (settings.LoanTypeId <= 0)
         {
@@ -153,6 +166,17 @@ public class Payment : IPaymentProvider
         {
             throw new ArgumentOutOfRangeException(nameof(settings.NumberOfPayments), settings.NumberOfPayments, "Teya Consumer Loans numberOfPayments must be configured.");
         }
+    }
+
+    /// <summary>
+    /// The loan portal page of a loan token: the token is the last path segment of the portal URL,
+    /// whether or not the URL ends with a slash. A query string on the portal URL is kept.
+    /// </summary>
+    internal static Uri LoanPortalRedirect(Uri loanPortalUrl, string token)
+    {
+        var builder = new UriBuilder(loanPortalUrl);
+        builder.Path = builder.Path.TrimEnd('/') + "/" + Uri.EscapeDataString(token);
+        return builder.Uri;
     }
 
     static string CreateDescription(PaymentSettings paymentSettings)

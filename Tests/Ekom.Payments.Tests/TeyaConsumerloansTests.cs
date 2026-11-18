@@ -10,9 +10,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Newtonsoft.Json;
 using System.Net;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using Xunit;
 using LoanEvents = Ekom.Payments.TeyaConsumerloans.Events;
+using TeyaPayment = Ekom.Payments.TeyaConsumerloans.Payment;
 
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 
@@ -156,12 +158,14 @@ public sealed class TeyaConsumerloansTests
         Assert.Single(f.Activity, x => x.Message.StartsWith("Loan status changed", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task ValidationFailureIsReportedAndNotAutomaticallyRetried()
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task ValidationRefusedByTeyaIsReportedAndNotRetried(HttpStatusCode failure)
     {
         await using var f = await Fixture.CreateAsync();
         f.Http.Status = "SUCCESS";
-        f.Http.FailValidation = true;
+        f.Http.ValidationFailure = failure;
 
         await f.PollAsync();
 
@@ -169,6 +173,117 @@ public sealed class TeyaConsumerloansTests
         Assert.Empty(f.Payments.Recorded);
         Assert.Contains(f.Activity, x => x.Level == LogLevel.Error);
     }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    public async Task TemporaryValidationFailureIsRetriedWithinTheSameWindow(HttpStatusCode failure)
+    {
+        await using var f = await Fixture.CreateAsync();
+        f.Http.Status = "SUCCESS";
+        f.Http.ValidationFailure = failure;
+        var polling = f.PollAsync();
+        await f.Clock.WaitForPollDelayAsync();
+        f.Http.ValidationFailure = null;
+        f.Clock.Advance(TeyaConsumerloansPollingService.PollingInterval);
+        await polling.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(2, f.Http.Validations);
+        var capture = Assert.Single(f.Payments.Recorded);
+        Assert.Equal(PaymentTransactionType.Captured, capture.Type);
+        Assert.Single(f.Activity, x => x.Message.Contains("retrying within the payment monitoring window", StringComparison.Ordinal));
+        Assert.DoesNotContain(f.Activity, x => x.Level == LogLevel.Error);
+    }
+
+    [Fact]
+    public async Task FailedRecordingOfAValidatedLoanIsRetriedWithoutValidatingAgain()
+    {
+        await using var f = await Fixture.CreateAsync();
+        f.Http.Status = "SUCCESS";
+        f.FailedCaptures = 2;
+        var polling = f.PollAsync();
+        for (var i = 0; i < 2; i++)
+        {
+            await f.Clock.WaitForPollDelayAsync();
+            f.Clock.Advance(TeyaConsumerloansPollingService.PollingInterval);
+        }
+        await polling.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, f.Http.Validations);
+        var capture = Assert.Single(f.Payments.Captures(f.Request.PaymentId));
+        Assert.Equal("1234", capture.TransactionId);
+        Assert.Single(f.Activity, x => x.Message.Contains("retrying within the payment monitoring window", StringComparison.Ordinal));
+        Assert.Empty(await f.RecoveryAsync());
+    }
+
+    [Fact]
+    public async Task ApprovedLoanThatCannotBeRecordedIsLeftForTheNextRestartWhenTheWindowEnds()
+    {
+        await using var f = await Fixture.CreateAsync();
+        f.Http.Status = "SUCCESS";
+        f.FailedCaptures = int.MaxValue;
+        var polling = f.PollAsync();
+        await f.Clock.WaitForPollDelayAsync();
+        f.Clock.Advance(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(30));
+        await polling.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, f.Http.Validations);
+        Assert.Empty(f.Payments.Recorded);
+        Assert.Contains(f.Activity, x => x.Message.Contains("timed out", StringComparison.Ordinal));
+        Assert.Single(await f.RecoveryAsync());
+    }
+
+    [Theory]
+    [InlineData("https://shop.example/receipt", "https://shop.example/receipt?token=")]
+    [InlineData("https://shop.example/receipt?orderId=1", "https://shop.example/receipt?orderId=1&token=")]
+    public async Task ValidationRedirectAddsTheTokenToTheSuccessUrlWithOrWithoutAQuery(string successUrl, string expected)
+    {
+        await using var f = await Fixture.CreateAsync();
+        f.Request.RedirectUrl = new Uri(successUrl);
+        f.Http.Status = "SUCCESS";
+
+        await f.PollAsync();
+
+        Assert.Equal(expected + f.Request.Token, f.Http.RedirectUrl);
+        Assert.True(f.Captured);
+    }
+
+    [Theory]
+    [InlineData("https://portal.example/consumerloans/", "https://portal.example/consumerloans/loan-token")]
+    [InlineData("https://portal.example/consumerloans", "https://portal.example/consumerloans/loan-token")]
+    [InlineData("https://portal.example/consumerloans/?lang=is", "https://portal.example/consumerloans/loan-token?lang=is")]
+    [InlineData("https://portal.example/consumerloans?lang=is", "https://portal.example/consumerloans/loan-token?lang=is")]
+    public async Task CustomerIsSentToTheLoanPortalWithTheTokenAsTheLastPathSegment(string loanPortalUrl, string expected)
+    {
+        await using var f = await Fixture.CreateAsync();
+        var site = new ProviderTestSite();
+
+        var html = await f.RequestAsync(site, LoanSettings(new Uri(loanPortalUrl)));
+
+        Assert.Equal(expected, Regex.Match(html, "window.location.href = \"([^\"]*)\"").Groups[1].Value);
+        Assert.Equal(1, f.Http.TokenRequests);
+        Assert.Single(site.Payments.Payments);
+    }
+
+    [Fact]
+    public async Task MissingLoanPortalUrlFailsBeforeAnythingIsCreatedOrStored()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var site = new ProviderTestSite();
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => f.RequestAsync(site, LoanSettings(loanPortalUrl: null)));
+
+        Assert.Equal(0, f.Http.TokenRequests);
+        Assert.Empty(site.Payments.Payments);
+    }
+
+    static TeyaConsumerloansSettings LoanSettings(Uri? loanPortalUrl) => new()
+    {
+        ApiBaseUrl = new Uri("https://teya.example/"), Username = "test", Password = "not-a-secret",
+        LoanPortalUrl = loanPortalUrl, MerchantId = "1234567", LoanTypeId = 1, NumberOfPayments = 3,
+        FlexibleNumberOfPayments = false, TokenValidMinutes = 5, ProgressValidMinutes = 5,
+    };
 
     [Fact]
     public async Task RepeatedStatusFailuresDoNotExtendTimeoutOrFloodOrderActivity()
@@ -499,6 +614,9 @@ public sealed class TeyaConsumerloansTests
         public List<LoanActivityEventArgs> Activity { get; } = [];
         public InMemoryOrderPayments Payments { get; } = new();
 
+        /// <summary>How many of the next captures fail before anything is stored.</summary>
+        public int FailedCaptures { get; set; }
+
         /// <summary>The payment rows Teya used before payments were recorded on the Ekom order.</summary>
         public IOrderService LegacyOrders { get; private set; } = null!;
         public TeyaConsumerloansPollingService Service { get; private set; } = null!;
@@ -515,7 +633,7 @@ public sealed class TeyaConsumerloansTests
             }).Build();
             new EnsureTablesExist(f, configuration, NullLogger<EnsureTablesExist>.Instance).Create();
             f.Service = new TeyaConsumerloansPollingService(
-                NullLogger<TeyaConsumerloansPollingService>.Instance, f.Http, f, f.LegacyOrders, f.Payments,
+                NullLogger<TeyaConsumerloansPollingService>.Instance, f.Http, f, f.LegacyOrders, new FailingCaptures(f),
                 new PaymentsConfiguration { SendEmailAlerts = false }, null!, new HttpContextAccessor(), f._context);
 
             var payment = f.PaymentSettings();
@@ -548,6 +666,15 @@ public sealed class TeyaConsumerloansTests
 
         public Task PollAsync(CancellationToken ct = default) => Service.PollOrderAsync(Request, ct, Clock);
 
+        /// <summary>Starts a loan on <paramref name="site"/>, with Teya answering through <see cref="Http"/>.</summary>
+        public Task<string> RequestAsync(ProviderTestSite site, TeyaConsumerloansSettings settings)
+        {
+            var paymentSettings = site.Settings(100m);
+            paymentSettings.CustomSettings[typeof(TeyaConsumerloansSettings)] = settings;
+            return new TeyaPayment(NullLogger<TeyaPayment>.Instance, site.Configuration, site, site.Payments, site, Http,
+                new ConfigurationBuilder().Build(), new ServiceLookup(Service)).RequestAsync(paymentSettings);
+        }
+
         /// <summary>The loans the service would pick up again after a restart at the test clock's time.</summary>
         public Task<IReadOnlyList<PollingRequest>> RecoveryAsync() => Service.GetRecoveryRequestsAsync(default, Clock);
 
@@ -567,6 +694,37 @@ public sealed class TeyaConsumerloansTests
             File.Delete(_path);
             return ValueTask.CompletedTask;
         }
+    }
+
+    sealed class ServiceLookup(TeyaConsumerloansPollingService service) : IServiceProvider
+    {
+        public object? GetService(Type serviceType) => serviceType == typeof(TeyaConsumerloansPollingService) ? service : null;
+    }
+
+    /// <summary>The fixture's payments, with captures that fail before anything is stored while <see cref="Fixture.FailedCaptures"/> lasts.</summary>
+    sealed class FailingCaptures(Fixture f) : Ekom.Services.IOrderPayments
+    {
+        public Task<OrderPayment> CreateAsync(Ekom.Services.NewOrderPayment payment, CancellationToken ct = default) => f.Payments.CreateAsync(payment, ct);
+
+        public Task<Ekom.Services.PaymentRecordResult> RecordAsync(Ekom.Services.PaymentTransaction transaction, CancellationToken ct = default)
+        {
+            if (transaction.Type == PaymentTransactionType.Captured && f.FailedCaptures > 0)
+            {
+                f.FailedCaptures--;
+                throw new InvalidOperationException("Simulated database failure");
+            }
+            return f.Payments.RecordAsync(transaction, ct);
+        }
+
+        public Task<OrderPayment?> GetAsync(Guid paymentId, CancellationToken ct = default) => f.Payments.GetAsync(paymentId, ct);
+        public Task<OrderPayment?> GetByProviderReferenceAsync(string providerType, string providerReference, CancellationToken ct = default)
+            => f.Payments.GetByProviderReferenceAsync(providerType, providerReference, ct);
+        public Task<IReadOnlyList<OrderPayment>> GetOpenPaymentsAsync(string providerType, DateTime createdAfterUtc, CancellationToken ct = default)
+            => f.Payments.GetOpenPaymentsAsync(providerType, createdAfterUtc, ct);
+        public Task<Ekom.Services.OrderPaymentsView> GetForOrderAsync(Guid orderId, CancellationToken ct = default) => f.Payments.GetForOrderAsync(orderId, ct);
+        public Task<IReadOnlyDictionary<Guid, Ekom.Services.OrderPaymentAttempt>> GetCurrentPaymentsAsync(IReadOnlyCollection<Guid> orderIds, CancellationToken ct = default)
+            => f.Payments.GetCurrentPaymentsAsync(orderIds, ct);
+        public Task<Guid?> FindOrderAsync(string paymentIdOrTransactionId, CancellationToken ct = default) => f.Payments.FindOrderAsync(paymentIdOrTransactionId, ct);
     }
 
     sealed class Clock : FakeTimeProvider
@@ -601,21 +759,27 @@ public sealed class TeyaConsumerloansTests
         public Dictionary<string, string> StatusByToken { get; } = [];
         public string? StatusFailure { get; set; }
         public bool WaitForCancellation { get; set; }
-        public bool FailValidation { get; set; }
+        public HttpStatusCode? ValidationFailure { get; set; }
         public int Validations;
         public int StatusChecks;
+        public int TokenRequests;
         public string? RedirectUrl { get; private set; }
         public TaskCompletionSource RequestStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public HttpClient CreateClient(string name) => new(this, disposeHandler: false);
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (request.Method == HttpMethod.Post)
+            {
+                TokenRequests++;
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("\"loan-token\"") };
+            }
             if (request.Method == HttpMethod.Put)
             {
                 Validations++;
-                if (FailValidation)
+                if (ValidationFailure is { } failure)
                 {
-                    return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+                    return new HttpResponseMessage(failure);
                 }
                 var json = JsonConvert.DeserializeObject<Dictionary<string, string>>(await request.Content!.ReadAsStringAsync(cancellationToken))!;
                 RedirectUrl = json["RedirectUrl"];
