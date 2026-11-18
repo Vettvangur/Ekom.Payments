@@ -1,3 +1,4 @@
+using Ekom.Payments.Providers;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -5,6 +6,18 @@ namespace Ekom.Payments.PayTrail;
 
 public static class PayTrailHmacHelper
 {
+    /// <summary>
+    /// The HMAC algorithm used when none is configured.
+    /// </summary>
+    public const string DefaultAlgorithm = "sha256";
+
+    /// <summary>
+    /// True for the HMAC algorithms PayTrail supports: sha256 and sha512.
+    /// </summary>
+    public static bool IsSupportedAlgorithm(string? algorithm)
+        => string.Equals(algorithm, "sha256", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(algorithm, "sha512", StringComparison.OrdinalIgnoreCase);
+
     public static IDictionary<string, string> CreateHeaders(PayTrailSettings settings, string method)
     {
         var headers = new Dictionary<string, string>
@@ -24,8 +37,18 @@ public static class PayTrailHmacHelper
         return headers;
     }
 
-    public static string CalculateHmac(string secret, IEnumerable<KeyValuePair<string, string>> parameters, string body = "", string algorithm = "sha256")
+    public static string CalculateHmac(string secret, IEnumerable<KeyValuePair<string, string>> parameters, string body = "", string algorithm = DefaultAlgorithm)
     {
+        if (string.IsNullOrWhiteSpace(algorithm))
+        {
+            algorithm = DefaultAlgorithm;
+        }
+
+        if (!IsSupportedAlgorithm(algorithm))
+        {
+            throw new ArgumentException($"PayTrail HMAC algorithm \"{algorithm}\" is not supported. Use sha256 or sha512.", nameof(algorithm));
+        }
+
         var payload = string.Join(
             "\n",
             parameters
@@ -49,9 +72,16 @@ public static class PayTrailHmacHelper
 
     public static bool IsValidSignature(string secret, IEnumerable<KeyValuePair<string, string>> parameters, string signature, string body = "")
     {
-        var algorithm = parameters.FirstOrDefault(x => x.Key.Equals("checkout-algorithm", StringComparison.InvariantCultureIgnoreCase)).Value ?? "sha256";
+        var algorithm = parameters.FirstOrDefault(x => x.Key.Equals("checkout-algorithm", StringComparison.InvariantCultureIgnoreCase)).Value ?? DefaultAlgorithm;
+
+        // The algorithm comes from the request itself: only the ones PayTrail supports are accepted.
+        if (!IsSupportedAlgorithm(algorithm))
+        {
+            return false;
+        }
+
         var hmac = CalculateHmac(secret, parameters, body, algorithm);
 
-        return hmac.Equals(signature, StringComparison.InvariantCultureIgnoreCase);
+        return PaymentRowGuard.SignatureEquals(signature, hmac);
     }
 }

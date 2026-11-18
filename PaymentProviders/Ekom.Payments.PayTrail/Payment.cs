@@ -15,6 +15,8 @@ public class Payment : IPaymentProvider
 {
     internal const string _ppNodeName = "payTrail";
     const string reportPath = "/ekom/payments/paytrailresponse";
+    const string defaultApiBaseUrl = "https://services.paytrail.com";
+    const string defaultPlatformName = "ekom-vettvangur";
 
     readonly ILogger<Payment> _logger;
     readonly IUmbracoService _uService;
@@ -64,7 +66,16 @@ public class Payment : IPaymentProvider
 
             ArgumentException.ThrowIfNullOrEmpty(payTrailSettings.AccountId);
             ArgumentException.ThrowIfNullOrEmpty(payTrailSettings.SecretKey);
-            ArgumentNullException.ThrowIfNull(payTrailSettings.ApiBaseUrl);
+
+            // Checked before the payment is created. An empty algorithm means the default.
+            var algorithm = string.IsNullOrWhiteSpace(payTrailSettings.Algorithm)
+                ? PayTrailHmacHelper.DefaultAlgorithm
+                : payTrailSettings.Algorithm.Trim().ToLowerInvariant();
+            if (!PayTrailHmacHelper.IsSupportedAlgorithm(algorithm))
+            {
+                throw new InvalidOperationException(
+                    $"PayTrail setting Algorithm \"{payTrailSettings.Algorithm}\" is not supported. Use sha256 or sha512.");
+            }
 
             var orderLines = paymentSettings.Orders.ToList();
             var total = orderLines.Sum(x => x.GrandTotal);
@@ -78,6 +89,15 @@ public class Payment : IPaymentProvider
                 payTrailSettings,
                 httpContext: _httpCtx
             ).ConfigureAwait(false);
+
+            // The defaults apply only where the provider node, configuration or code left a setting empty.
+            // They are applied after the payment is created, so the provider data stored with it is as configured.
+            payTrailSettings.Algorithm = algorithm;
+            payTrailSettings.ApiBaseUrl ??= new Uri(defaultApiBaseUrl);
+            if (string.IsNullOrWhiteSpace(payTrailSettings.PlatformName))
+            {
+                payTrailSettings.PlatformName = defaultPlatformName;
+            }
 
             var reportUrl = paymentSettings.ReportUrl == null
                 ? PaymentsUriHelper.EnsureFullUri(new Uri(reportPath, UriKind.Relative), _httpCtx.Request)
