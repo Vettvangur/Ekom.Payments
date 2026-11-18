@@ -11,12 +11,15 @@ workflow, `publish-ekom-payments.yml`. Release groups are defined in
   packages no longer exist: Ekom owns what they did.
 - Every package requires the Ekom version in `EkomVersion` (`Directory.Build.props`).
   Release Ekom first, then set `EkomVersion` to that release before publishing here.
-- Each of the eight published providers has its own version in its project file,
+- Each of the nine published providers has its own version in its project file,
   release-please manifest entry, changelog, and tag. For example,
   `Ekom.Payments.Netgiro-v1.0.0` publishes only Netgiro.
 - All pending releases share one release PR, `chore: release main`. It lists every
   group with unreleased changes and bumps only those groups.
 - AsynchronousExample remains outside the publishing list.
+- A new provider needs an entry in `.github/publish-projects.json`,
+  `release-please-config.json` and `.release-please-manifest.json`, and has to be added
+  to the NuGet trusted publishing policy before its first release.
 
 Release-please bumps the patch number only (`1.1.1`, `1.1.2`, ...),
 independently for each group. Provider-only commits are excluded from

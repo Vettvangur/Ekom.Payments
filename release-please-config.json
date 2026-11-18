@@ -139,6 +139,21 @@
           "xpath": "/Project/PropertyGroup/Version"
         }
       ]
+    },
+    "PaymentProviders/Ekom.Payments.Stripe": {
+      "component": "Ekom.Payments.Stripe",
+      "package-name": "Ekom.Payments.Stripe",
+      "include-component-in-tag": true,
+      "release-type": "simple",
+      "versioning": "always-bump-patch",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Ekom.Payments.Stripe.csproj",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ]
     }
   },
   "bootstrap-sha": "9370e11512b0cb13156defb65ab6f30ddf7ff0d0",
