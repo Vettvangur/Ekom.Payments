@@ -57,6 +57,17 @@ class Payment : IPaymentProvider
     }
 
     /// <summary>
+    /// The language sent to Borgun: the two-letter language code in upper case, "IS" for "is-IS" and "EN" for "en-US".
+    /// </summary>
+    internal static string FormatLanguage(string language)
+    {
+        var separator = language.IndexOfAny(['-', '_']);
+        var code = separator > 0 ? language[..separator] : language;
+
+        return code.ToUpperInvariant();
+    }
+
+    /// <summary>
     /// The order id sent to Borgun for a payment, Borgun returns it with the payment confirmation.
     /// </summary>
     internal static string GetBorgunOrderId(PaymentSettings paymentSettings, Guid uniqueId)
@@ -99,6 +110,19 @@ class Payment : IPaymentProvider
 
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
 
+            // Checked before the payment is stored, so a misconfigured provider stores nothing.
+            ArgumentNullException.ThrowIfNull(borgunSettings.PaymentPageUrl);
+
+            if (string.IsNullOrEmpty(borgunSettings.MerchantId))
+            {
+                throw new ArgumentNullException(nameof(borgunSettings.MerchantId));
+            }
+
+            if (string.IsNullOrEmpty(borgunSettings.SecretCode))
+            {
+                throw new ArgumentNullException(nameof(borgunSettings.SecretCode));
+            }
+
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
             paymentSettings.CancelUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl, _httpCtx.Request);
             paymentSettings.ErrorUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.ErrorUrl, _httpCtx.Request);
@@ -118,7 +142,7 @@ class Payment : IPaymentProvider
                 { "returnurlsuccessserver", reportUrl.ToString() },
                 { "amount", FormatPrice(total, borgunSettings) },
                 { "currency", paymentSettings.Currency },
-                { "language", paymentSettings.Language.ToUpper() == "IS-IS" ? "IS" : paymentSettings.Language.ToUpper() }
+                { "language", FormatLanguage(paymentSettings.Language) }
             };
 
             for (int lineNumber = 0, length = paymentSettings.Orders.Count(); lineNumber < length; lineNumber++)
@@ -171,8 +195,6 @@ class Payment : IPaymentProvider
 
             // Borgun only supports specific types of order id's
             var borgunOrderId = GetBorgunOrderId(paymentSettings, payment.PaymentId);
-
-            ArgumentNullException.ThrowIfNull(borgunSettings.SecretCode);
 
             //CheckHash
             var checkHash = CryptoHelpers.GetHMACSHA256(borgunSettings.SecretCode,
