@@ -29,7 +29,9 @@ static class FormHelper
 
     public static string Redirect(string url, string? cspNonce = null)
     {
-        var safeUrl = System.Net.WebUtility.HtmlEncode(url);
+        // The address is written into a JavaScript string. HTML entities are not decoded inside a script,
+        // so HTML encoding would turn every "&" of the query into a literal "&amp;".
+        var safeUrl = System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(url);
 
         var html = new StringBuilder();
 
