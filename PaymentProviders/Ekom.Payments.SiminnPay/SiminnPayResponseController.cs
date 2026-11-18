@@ -3,9 +3,11 @@ using Ekom.Payments.Helpers;
 using Ekom.Payments.Providers;
 using Ekom.Payments.SiminnPay.Model;
 using Ekom.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 using System.Net.Mail;
 
 namespace Ekom.Payments.SiminnPay;
@@ -92,7 +94,8 @@ public class SiminnPayResponseController : ControllerBase
                 return Unauthorized();
             }
 
-            if (notificationCallBack.Amount != payment.Amount)
+            // Síminn Pay was asked for the whole amount, and only a whole amount is covered by the signature.
+            if (notificationCallBack.Amount != SiminnPayService.WholeAmount(payment.Amount))
             {
                 _logger.LogWarning(
                     "SiminnPay Response - Amount mismatch. Expected {ExpectedAmount}, received {ReceivedAmount}. " + PaymentLog.Template,
@@ -184,13 +187,21 @@ public class SiminnPayResponseController : ControllerBase
             return NotFound("Pay order not found.");
         }
 
-        var svc = new SiminnPayService(ReadSettings(payment)!, _logger);
+        var siminnPaySettings = ReadSettings(payment)!;
+        var svc = new SiminnPayService(siminnPaySettings, _logger);
         var initialStatus = await svc.GetStatus(siminnPayOrderKey);
+        if (initialStatus == null)
+        {
+            _logger.LogWarning("SiminnPay Status Requested - Síminn Pay returned no status. " + PaymentLog.Template,
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
+
+            return StatusCode(StatusCodes.Status502BadGateway, "Síminn Pay returned no status.");
+        }
 
         _logger.LogDebug("SiminnPay Status Requested - Status: {Status} " + PaymentLog.Template,
             initialStatus.Status, payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
 
-        return new JsonResult(new SiminnPayStatusView(payment, initialStatus));
+        return new JsonResult(new SiminnPayStatusView(payment, initialStatus, siminnPaySettings.TimeToLive));
     }
 
     // Síminn Pay's credentials are read from the payment provider node, not stored with the payment.
@@ -206,7 +217,7 @@ public class SiminnPayResponseController : ControllerBase
             siminnPaySettings,
             SiminnPaySettings.Properties);
 
-        return siminnPaySettings;
+        return siminnPaySettings.ApplyDefaults();
     }
 
     private static bool IsValidSignature(SiminnPayOrderStatus notificationCallBack, string secret)
@@ -216,8 +227,14 @@ public class SiminnPayResponseController : ControllerBase
             return false;
         }
 
+        // The signature covers a whole amount. An amount with a fraction is not covered by it.
+        if (notificationCallBack.Amount != decimal.Truncate(notificationCallBack.Amount))
+        {
+            return false;
+        }
+
         string body = notificationCallBack.OrderKey.ToString() +
-                    (int)notificationCallBack.Amount +
+                    notificationCallBack.Amount.ToString("0", CultureInfo.InvariantCulture) +
                     notificationCallBack.ExpiresAt.ToString("dd.MM.yyyy HH:mm:ss");
 
         var signature = CryptoHelpers.GetHMACSHA256(secret, body);

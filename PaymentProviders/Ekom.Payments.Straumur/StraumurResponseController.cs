@@ -207,7 +207,7 @@ public class StraumurResponseController : ControllerBase
             case PaymentEvent.Refund:
                 // Straumur sends amounts in minor units.
                 return decimal.TryParse(response.Amount, NumberStyles.Integer, CultureInfo.InvariantCulture, out var minorUnits) && minorUnits > 0
-                    ? transaction with { Type = PaymentTransactionType.Refunded, Amount = minorUnits / 100m, Message = response.Reason }
+                    ? transaction with { Type = PaymentTransactionType.Refunded, Amount = StraumurAmount.FromMinorUnits(minorUnits), Message = response.Reason }
                     : null;
 
             default:

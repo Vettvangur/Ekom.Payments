@@ -1,5 +1,6 @@
 using Ekom.Models.Payments;
 using Ekom.Payments.Helpers;
+using Ekom.Payments.Providers;
 using Ekom.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -50,31 +51,43 @@ public class ValitorResponseHelper
     /// <summary>
     /// An alternative to subscribing to the valitor callback event.
     /// This helper can be invoked in the view or controller that receives the redirect from Valitor.
-    /// Only returns <see cref="OrderStatus"/> on successful verification
+    /// Only returns the payment on successful verification. <br />
+    /// Verifies the signature as <see cref="ValitorResponseController"/> does: SHA-256 of the verification code
+    /// followed by the reference number. The verification code is <paramref name="verificationcode"/> when given,
+    /// otherwise the one stored with the payment when it was started.
     /// </summary>
     public async Task<OrderPayment?> Verify(
         Response valitorResp, 
-        string verificationcode = null)
+        string? verificationcode = null)
     {
-        verificationcode ??= _configuration["Ekom:Payments:Valitor:VerificationCode"];
-
-        if (string.IsNullOrWhiteSpace(verificationcode)
-        || string.IsNullOrEmpty(valitorResp?.DigitalSignatureResponse))
+        if (string.IsNullOrEmpty(valitorResp?.DigitalSignatureResponse)
+        || !Guid.TryParse(valitorResp.ReferenceNumber, out var paymentId))
         {
-            _logger.LogError("Valitor Payment Response - Missing verification code or signature, unable to verify");
+            _logger.LogError("Valitor Payment Response - Missing signature or reference, unable to verify");
             return null;
         }
 
-        string DigitalSignature = CryptoHelpers.GetMD5StringSum(verificationcode + valitorResp.ReferenceNumber);
-
-        if (valitorResp.DigitalSignatureResponse.Equals(DigitalSignature, StringComparison.InvariantCultureIgnoreCase))
+        var payment = await _payments.GetAsync(paymentId);
+        if (payment == null || !PaymentRowGuard.BelongsTo(payment, Payment._ppNodeName))
         {
-            if (Guid.TryParse(valitorResp.ReferenceNumber, out var guid))
-            {
-                return await _payments.GetAsync(guid);
-            }
+            _logger.LogWarning("Valitor Payment Response - Unable to find Valitor payment. PaymentId: {PaymentId}", paymentId);
+            return null;
         }
 
-        return null;
+        verificationcode ??= payment.GetProviderData<ValitorSettings>()?.VerificationCode;
+
+        if (string.IsNullOrWhiteSpace(verificationcode))
+        {
+            _logger.LogError(
+                "Valitor Payment Response - Missing verification code, unable to verify. " + PaymentLog.Template,
+                payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
+            return null;
+        }
+
+        var digitalSignature = CryptoHelpers.GetSHA256HexStringSum(verificationcode + valitorResp.ReferenceNumber);
+
+        return PaymentRowGuard.SignatureEquals(valitorResp.DigitalSignatureResponse, digitalSignature)
+            ? payment
+            : null;
     }
 }

@@ -72,20 +72,21 @@ public class AltaResponseController : ControllerBase
 
         _logger.LogDebug("Alta Payment Response - ModelState.IsValid");
 
-        if (model.Body.PaymentStatus != PaymentStatus.Success)
-        {
-            return Ok("Payment not Valid");
-        }
-
+        var paid = model.Body.PaymentStatus == PaymentStatus.Success;
         OrderPayment? payment = null;
+        PaymentSettings? paymentSettings = null;
+
+        // A response that is not a success records nothing unless it is verified. The customer's browser
+        // is sent to the error page; the server notification gets 200 as before.
+        IActionResult NotPaid() => NotPaidResult(paymentSettings, model);
 
         try
         {
-            var transaction = model.Body.Transactions.First();
-            if (!TryGetOrderId(transaction.ShopOrderId, out var orderId))
+            var transaction = model.Body.Transactions?.FirstOrDefault();
+            if (transaction == null || !TryGetOrderId(transaction.ShopOrderId, out var orderId))
             {
                 _logger.LogWarning("Alta Payment Response - ShopOrderId has no order id");
-                return BadRequest();
+                return paid ? BadRequest() : NotPaid();
             }
 
             // Until the payment is loaded the order id is all we know.
@@ -97,12 +98,12 @@ public class AltaResponseController : ControllerBase
             {
                 _logger.LogWarning("Alta Payment Response - Unable to find an AltaPay payment. OrderId: {OrderUniqueId}", orderId);
 
-                return NotFound();
+                return paid ? NotFound() : NotPaid();
             }
 
             using var scope = PaymentLog.BeginScope(_logger, payment);
 
-            var paymentSettings = payment.GetPaymentSettings()
+            paymentSettings = payment.GetPaymentSettings()
                 ?? throw new InvalidOperationException($"Payment {payment.PaymentId} has no payment settings.");
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
 
@@ -114,7 +115,7 @@ public class AltaResponseController : ControllerBase
                 _logger.LogError("Alta Payment Response - No AltaPay settings, unable to verify. " + PaymentLog.Template,
                     payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
 
-                return StatusCode(500);
+                return paid ? StatusCode(500) : NotPaid();
             }
 
             // The checksum is the only proof that the response comes from AltaPay,
@@ -126,23 +127,22 @@ public class AltaResponseController : ControllerBase
                     + "Configure the shared secret on the AltaPay terminal and on the payment provider. " + PaymentLog.Template,
                     payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
 
-                return StatusCode(500);
+                return paid ? StatusCode(500) : NotPaid();
             }
 
-            var calculatedChecksum = AltaResponseHelper.CalculateChecksum(new ChecksumCalculationRequest
-            {
-                Amount = payment.Amount.ToString("F2", CultureInfo.InvariantCulture),
-                Currency = transaction.MerchantCurrency.ToString(),
-                OrderId = orderId.ToString(),
-                Secret = altaSettings.CustomerInformationSharedSecret
-            });
-
-            if (payment.OrderUniqueId != orderId || !PaymentRowGuard.SignatureEquals(response.Checksum, calculatedChecksum))
+            if (!ChecksumMatches(payment, altaSettings, response, transaction, orderId))
             {
                 _logger.LogError("Alta Payment Response - Failed checksum verification. " + PaymentLog.Template,
                     payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
 
-                return StatusCode(500);
+                return paid ? StatusCode(500) : NotPaid();
+            }
+
+            if (!paid)
+            {
+                await RecordFailureAsync(payment, altaSettings, transaction, model);
+
+                return NotPaid();
             }
 
             // Recorded once per payment: AltaPay sends both a browser response and a server notification.
@@ -198,6 +198,85 @@ public class AltaResponseController : ControllerBase
             _payments, _legacyOrders, Payment._ppNodeName, orderId.ToString());
 
         return payment != null && PaymentRowGuard.BelongsTo(payment, Payment._ppNodeName) ? payment : null;
+    }
+
+    /// <summary>
+    /// The checksum AltaPay calculates with the shared secret: the only proof that a response comes from AltaPay.
+    /// </summary>
+    static bool ChecksumMatches(OrderPayment payment, AltaSettings altaSettings, PaymentResponse response, Transaction transaction, Guid orderId)
+    {
+        if (string.IsNullOrWhiteSpace(altaSettings.CustomerInformationSharedSecret))
+        {
+            return false;
+        }
+
+        var calculatedChecksum = AltaResponseHelper.CalculateChecksum(new ChecksumCalculationRequest
+        {
+            Amount = payment.Amount.ToString("F2", CultureInfo.InvariantCulture),
+            Currency = transaction.MerchantCurrency.ToString(),
+            OrderId = orderId.ToString(),
+            Secret = altaSettings.CustomerInformationSharedSecret
+        });
+
+        return payment.OrderUniqueId == orderId && PaymentRowGuard.SignatureEquals(response.Checksum, calculatedChecksum);
+    }
+
+    /// <summary>AltaPay's results for a payment that did not go through.</summary>
+    static bool IsFailure(string? result)
+        => string.Equals(result, "Fail", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(result, "Failed", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(result, "Error", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Records a verified failure. Other results that are not a success (f.x. Open) are not final and record nothing.
+    /// </summary>
+    async Task RecordFailureAsync(OrderPayment payment, AltaSettings altaSettings, Transaction transaction, APIResponse model)
+    {
+        if (!IsFailure(model.Body.Result))
+        {
+            _logger.LogInformation("Alta Payment Response - Result {AltaResult} is not final. " + PaymentLog.Template,
+                model.Body.Result, payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
+            return;
+        }
+
+        // The browser response and the server notification carry the same transaction: recorded once.
+        var result = await _payments.RecordAsync(new PaymentTransaction
+        {
+            PaymentId = payment.PaymentId,
+            Type = PaymentTransactionType.Failed,
+            TransactionId = string.IsNullOrWhiteSpace(transaction.TransactionId) ? null : transaction.TransactionId,
+            Message = string.IsNullOrWhiteSpace(model.Header?.ErrorMessage) ? "AltaPay reported the payment as failed" : model.Header.ErrorMessage,
+            Details =
+            [
+                new PaymentDetail("result", "AltaPay result", model.Body.Result),
+                new PaymentDetail("terminal", "Terminal", altaSettings.Terminal),
+            ],
+            RawData = JsonConvert.SerializeObject(model),
+        });
+
+        _logger.LogWarning("Alta Payment Response - FAILED. " + PaymentLog.Template + " Result: {AltaResult} FirstDelivery: {Recorded}",
+            payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, model.Body.Result, result.Recorded);
+    }
+
+    /// <summary>
+    /// The answer to a response that is not a success. The customer's browser, recognised by the marker
+    /// on the callback_ok address, is sent to the error page; the server notification gets 200 as before.
+    /// </summary>
+    IActionResult NotPaidResult(PaymentSettings? paymentSettings, APIResponse model)
+    {
+        if (!Request.Query.ContainsKey(Payment.BrowserQueryKey) || paymentSettings?.ErrorUrl == null)
+        {
+            return Ok("Payment not Valid");
+        }
+
+        var errorUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.ErrorUrl, _httpCtx.Request).ToString();
+        var transaction = model.Body?.Transactions?.FirstOrDefault();
+        if (transaction != null)
+        {
+            errorUrl = AddTransactionQueryParams(errorUrl, transaction, model);
+        }
+
+        return Redirect(QueryHelpers.AddQueryString(errorUrl, "altapayFailed", "true"));
     }
 
     /// <summary>The shop order id is the order id, optionally prefixed with "item;item;".</summary>
@@ -293,7 +372,31 @@ public class AltaResponseController : ControllerBase
             return NotFound();
         }
 
-        // The fail response carries no checksum, so nothing is recorded: the customer is only sent to the error page.
+        // A failure is recorded only when the response passes the same checksum verification as a success.
+        // Without it nothing is recorded: the customer is only sent to the error page.
+        try
+        {
+            var altaSettings = order.GetProviderData<AltaSettings>();
+            if (altaSettings != null
+                && !string.IsNullOrWhiteSpace(altaSettings.Terminal)
+                && ChecksumMatches(order, altaSettings, response, transaction, orderId))
+            {
+                await RecordFailureAsync(order, altaSettings, transaction, model);
+            }
+            else
+            {
+                _logger.LogInformation("Alta Payment Fail Response - Not verified, nothing recorded. " + PaymentLog.Template,
+                    order.OrderNumber, order.OrderUniqueId, order.PaymentId);
+            }
+        }
+        catch (Exception ex)
+        {
+            // The customer is still sent to the error page.
+            _logger.LogError(ex, "Alta Payment Fail Response - Unable to record the failure. " + PaymentLog.Template,
+                order.OrderNumber, order.OrderUniqueId, order.PaymentId);
+            await NotifyErrorAsync(ex, transaction.ShopOrderId, orderId, ct);
+        }
+
         PaymentSettings? paymentSettings;
         try
         {
@@ -461,6 +564,7 @@ public class AltaResponseController : ControllerBase
 
         await Events.OnCallbackUrlAsync(this, eventArgs);
 
-        return Ok(eventArgs.Template);
+        // AltaPay shows the returned template as the payment form page
+        return Content(eventArgs.Template ?? string.Empty, "text/html");
     }
 }

@@ -55,7 +55,7 @@ public class PayTrailResponseController : ControllerBase
 
         try
         {
-            var callback = CreateCallback(parameters);
+            var callback = CreateCallback(parameters, out var amountIsValid);
             if (callback == null || !Guid.TryParse(callback.Stamp, out var paymentId))
             {
                 return BadRequest();
@@ -89,11 +89,19 @@ public class PayTrailResponseController : ControllerBase
             }
 
             // A response that cannot be verified says nothing about the payment: it is logged, never recorded.
+            // The customer's browser is sent to the error page, the server callback gets the status code.
             if (!PayTrailHmacHelper.IsValidSignature(payTrailSettings.SecretKey, parameters, callback.Signature))
             {
                 _logger.LogWarning("PayTrail Payment Response - Signature mismatch. " + PaymentLog.Template,
                     payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
-                return Unauthorized();
+                return isCallback ? Unauthorized() : ErrorRedirect(paymentSettings, Unauthorized());
+            }
+
+            if (!amountIsValid)
+            {
+                _logger.LogWarning("PayTrail Payment Response - Malformed amount, unable to verify. " + PaymentLog.Template,
+                    payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
+                return isCallback ? Unauthorized() : ErrorRedirect(paymentSettings, Unauthorized());
             }
 
             var transaction = new PaymentTransaction
@@ -120,7 +128,7 @@ public class PayTrailResponseController : ControllerBase
                     _logger.LogWarning(
                         "PayTrail Payment Response - Amount mismatch. Expected {ExpectedAmount}, got {ActualAmount}. " + PaymentLog.Template,
                         expectedAmount, callback.Amount, payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
-                    return BadRequest();
+                    return isCallback ? BadRequest() : ErrorRedirect(paymentSettings, BadRequest());
                 }
 
                 // Recorded once per payment: PayTrail sends both a redirect and a server callback.
@@ -143,6 +151,8 @@ public class PayTrailResponseController : ControllerBase
             }
 
             // "fail" is PayTrail's verified answer that the payment did not go through. "pending" and "delayed" are not final.
+            var notFinal = callback.Status.Equals("pending", StringComparison.InvariantCultureIgnoreCase)
+                || callback.Status.Equals("delayed", StringComparison.InvariantCultureIgnoreCase);
             if (callback.Status.Equals("fail", StringComparison.InvariantCultureIgnoreCase))
             {
                 await _payments.RecordAsync(transaction with
@@ -163,6 +173,14 @@ public class PayTrailResponseController : ControllerBase
             if (isCallback)
             {
                 return Ok();
+            }
+
+            // A payment that is not final may still be paid: the customer is sent to the success page,
+            // like the gateways that confirm by server callback, and the checkout is not released.
+            if (notFinal)
+            {
+                var pendingUrl = Ekom.Payments.Helpers.PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl.ToString(), Request);
+                return Redirect(pendingUrl.ToString());
             }
 
             var cancelUrl = Ekom.Payments.Helpers.PaymentsUriHelper.EnsureFullUri(paymentSettings.CancelUrl.ToString(), Request);
@@ -197,8 +215,24 @@ public class PayTrailResponseController : ControllerBase
             : payment.Amount;
     }
 
-    static PayTrailCallback? CreateCallback(IReadOnlyDictionary<string, string> parameters)
+    /// <summary>
+    /// Sends the customer's browser to the error page. Without an error URL the status code is returned.
+    /// </summary>
+    IActionResult ErrorRedirect(PaymentSettings paymentSettings, IActionResult fallback)
     {
+        if (paymentSettings.ErrorUrl == null)
+        {
+            return fallback;
+        }
+
+        var errorUrl = Ekom.Payments.Helpers.PaymentsUriHelper.EnsureFullUri(paymentSettings.ErrorUrl.ToString(), Request);
+        return Redirect(errorUrl.ToString());
+    }
+
+    static PayTrailCallback? CreateCallback(IReadOnlyDictionary<string, string> parameters, out bool amountIsValid)
+    {
+        amountIsValid = false;
+
         if (!parameters.TryGetValue("signature", out var signature)
             || !parameters.TryGetValue("checkout-stamp", out var stamp)
             || !parameters.TryGetValue("checkout-status", out var status)
@@ -207,11 +241,14 @@ public class PayTrailResponseController : ControllerBase
             return null;
         }
 
+        // A malformed amount fails verification; it is checked once the payment is known.
+        amountIsValid = int.TryParse(amount, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsedAmount);
+
         return new PayTrailCallback
         {
             Account = parameters.GetValueOrDefault("checkout-account") ?? string.Empty,
             Algorithm = parameters.GetValueOrDefault("checkout-algorithm") ?? string.Empty,
-            Amount = int.Parse(amount),
+            Amount = parsedAmount,
             Stamp = stamp,
             Reference = parameters.GetValueOrDefault("checkout-reference") ?? string.Empty,
             TransactionId = parameters.GetValueOrDefault("checkout-transaction-id") ?? string.Empty,

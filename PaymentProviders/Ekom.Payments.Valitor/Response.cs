@@ -24,7 +24,7 @@ public class Response
     }
 
     /// <summary>
-    /// MD5 hash sem er búið til með að taka MD5 af strengnum VerificationCode + ReferenceNumber á sama hátt og gert er í kafla 4.2.1.1. <para></para>
+    /// SHA-256 hash (hex) sem er búið til með að taka SHA-256 af strengnum VerificationCode + ReferenceNumber á sama hátt og gert er í kafla 4.2.1.1. <para></para>
     /// Nauðsynlegt er að DigitalSignatureResponse sé reiknað út á þeirri síðu sem Greiðslusíðan kallar á og það gildi borið saman við gildið sem Greiðslusíðan sendir <para></para>
     /// til að tryggja að ekki sé verið að búa til tengla og reyna að líkja eftir sölum án þess að greiðsla eigi sér stað. <para></para>
     /// </summary>

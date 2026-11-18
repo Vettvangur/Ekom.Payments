@@ -9,9 +9,8 @@ PayTrail documentation: <https://docs.paytrail.com/#/>
 - Creates payments through PayTrail `POST /payments`.
 - Redirects customers to the PayTrail hosted payment page.
 - Validates PayTrail signed return and callback parameters.
-- Marks Ekom payment orders as paid when PayTrail returns `checkout-status=ok`.
-- Stores the PayTrail transaction ID in the Ekom payment order `CustomData` field.
-- Stores payment callback data in `EkomPayments`.
+- Records the payment on the Ekom order through Ekom's order payments: a capture when PayTrail returns `checkout-status=ok`, a failed payment when it returns `checkout-status=fail`.
+- Stores the PayTrail transaction ID, payment method, reference and status with the recorded transaction. The signature is not stored.
 
 Not currently implemented:
 
@@ -38,10 +37,12 @@ Configure these values on the PayTrail payment provider node or set them in code
 | --- | --- | --- | --- |
 | `AccountId` | Yes | | PayTrail merchant account ID. |
 | `SecretKey` | Yes | | PayTrail merchant secret key used for HMAC signing. |
-| `ApiBaseUrl` | Yes | `https://services.paytrail.com` | PayTrail API base URL. |
-| `Algorithm` | Yes | `sha256` | HMAC algorithm. PayTrail supports `sha256` and `sha512`. |
+| `ApiBaseUrl` | No | `https://services.paytrail.com` | PayTrail API base URL. |
+| `Algorithm` | No | `sha256` | HMAC algorithm used to sign requests: `sha256` or `sha512`. Any other value fails the payment request before a payment is created. |
 | `PlatformName` | No | `ekom-vettvangur` | Sent as PayTrail `platform-name` header. |
 | `DebugLog` | No | `false` | Logs full PayTrail create-payment request and response payloads, plus callback payloads with the signature redacted, at Information level. Payloads can contain customer data and must only be enabled for troubleshooting. |
+
+A default is used only when the setting is empty after the provider node, configuration and code have been applied, so any of them can still set it.
 
 PayTrail test credentials from their documentation:
 
@@ -90,17 +91,17 @@ paymentSettings.SetPayTrailSettings(new PayTrailSettings
 ## Payment flow
 
 1. `Payment.RequestAsync` validates the incoming `PaymentSettings`.
-2. Provider settings are populated from Umbraco/config/custom settings.
-3. A pending Ekom payment order is inserted.
+2. Provider settings are populated from Umbraco/config/custom settings, then the defaults fill what is still empty. `AccountId`, `SecretKey` and `Algorithm` are checked.
+3. A payment is created on the Ekom order. Its payment id is sent to PayTrail as the `stamp`.
 4. A PayTrail create-payment payload is built from the Ekom order data.
 5. The provider signs the request with PayTrail HMAC headers.
 6. PayTrail returns a `transactionId` and hosted payment `href`.
-7. The `transactionId` is saved to the Ekom payment order `CustomData` field.
-8. The customer is redirected to the PayTrail hosted payment page.
-9. PayTrail redirects the customer back to `/ekom/payments/paytrailresponse`.
-10. PayTrail also calls the same response endpoint with `callback=true` for server callbacks.
-11. The response controller validates the PayTrail signature and amount.
-12. If `checkout-status=ok`, the Ekom order is marked paid and success events are raised.
+7. The customer is redirected to the PayTrail hosted payment page.
+8. PayTrail redirects the customer back to `/ekom/payments/paytrailresponse`.
+9. PayTrail also calls the same response endpoint with `callback=true` for server callbacks.
+10. The response controller finds the payment by the `checkout-stamp` and validates the PayTrail signature.
+11. If `checkout-status=ok` and `checkout-amount` matches the order, a capture is recorded on the Ekom order, once per payment however often PayTrail answers. Ekom then completes the checkout. Subscribe to `Ekom.Events.OrderEvents.PaymentRecordedAsync` to follow recorded payments.
+12. If `checkout-status=fail`, a failed payment is recorded. `pending` and `delayed` record nothing.
 
 ## URLs
 
@@ -110,9 +111,16 @@ The default PayTrail response endpoint is:
 /ekom/payments/paytrailresponse
 ```
 
-The provider sends this endpoint to PayTrail as both success and cancel redirect URL. The response controller then redirects the customer to the configured Ekom `SuccessUrl` or `CancelUrl` after validation.
+The provider sends this endpoint to PayTrail as both success and cancel redirect URL. After validation the response controller redirects the customer:
 
-Server callbacks are sent to the same endpoint with `callback=true`. Callback requests return `200 OK` after processing instead of redirecting.
+| PayTrail answer | Customer is sent to |
+| --- | --- |
+| `ok` | `SuccessUrl` |
+| `pending` or `delayed` | `SuccessUrl`. The payment is not final yet; PayTrail's server callback records it when it is. The checkout is not released. |
+| `fail` or any other status | `CancelUrl` |
+| Signature, `checkout-algorithm` or `checkout-amount` cannot be verified, or the amount does not match | `ErrorUrl`. Nothing is recorded. |
+
+Server callbacks are sent to the same endpoint with `callback=true`. Callback requests return `200 OK` after processing instead of redirecting, `401 Unauthorized` when the answer cannot be verified and `400 Bad Request` when the amount does not match.
 
 ## Amounts and currencies
 
@@ -142,29 +150,16 @@ The response controller validates every PayTrail return/callback by:
 
 - Filtering query parameters to `checkout-*` keys.
 - Sorting keys alphabetically.
-- Calculating an HMAC with the configured `SecretKey`.
-- Comparing the calculated HMAC to the `signature` parameter.
-- Checking that `checkout-amount` matches the stored Ekom order amount.
+- Calculating an HMAC with the configured `SecretKey` and the algorithm in `checkout-algorithm`. Only `sha256` and `sha512` are accepted.
+- Comparing the calculated HMAC to the `signature` parameter in constant time.
+- Rejecting a `checkout-amount` that is not a whole number.
+- For `checkout-status=ok`, checking that `checkout-amount` matches the Ekom order amount.
 
-Only a valid `checkout-status=ok` response marks the order as paid.
+Only a valid `checkout-status=ok` response records a capture.
 
 ## Events
 
-Provider-specific events are exposed through `Ekom.Payments.PayTrail.Events`:
-
-```csharp
-Events.Success += (sender, args) =>
-{
-    // Payment verified successfully.
-};
-
-Events.Error += (sender, args) =>
-{
-    // Payment failed or verification failed.
-};
-```
-
-These events also forward to the global Ekom payment events.
+`Ekom.Payments.PayTrail.Events.Success` and `Events.Error` are obsolete and no longer raised. Payments are recorded on the Ekom order: subscribe to `Ekom.Events.OrderEvents.PaymentRecordedAsync` instead.
 
 ## Build
 
@@ -177,5 +172,5 @@ dotnet build Ekom.Payments.sln
 ## Notes
 
 - Keep PayTrail `SecretKey` out of source control.
-- PayTrail may call callbacks more than once; the response controller is idempotent for already-paid orders.
+- PayTrail may call callbacks more than once; a payment's capture is recorded once however often it arrives.
 - The PayTrail signature payload uses line feed (`\n`) separators. Carriage returns are not supported by PayTrail.

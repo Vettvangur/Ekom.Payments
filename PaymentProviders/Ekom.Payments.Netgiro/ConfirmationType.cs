@@ -17,12 +17,12 @@ public enum ConfirmationType
     Automatic,
 
     /// <summary>
-    /// If ConfirmationType = Manual => Provider calls ConfirmCart
+    /// If ConfirmationType = ServerCallback => Provider gets callback from server that cart is confirmed
     /// </summary>
     ServerCallback,
 
     /// <summary>
-    /// If ConfirmationType = ServerCallback => Provider gets callback from server that cart is confirmed
+    /// If ConfirmationType = Manual => Provider calls ConfirmCart
     /// </summary>
     Manual,
 }

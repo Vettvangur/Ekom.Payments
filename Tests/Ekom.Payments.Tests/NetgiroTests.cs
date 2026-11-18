@@ -58,15 +58,7 @@ public sealed class NetgiroTests
         var site = new ProviderTestSite();
         var (payment, _) = await RequestAsync(site, 1990);
 
-        var response = new NetgiroResponse
-        {
-            ReferenceNumber = payment.PaymentId,
-            ConfirmationCode = "6f9619ff-8b86-d011-b42d-00c04fc964ff",
-            InvoiceNumber = "1234",
-        };
-        response.Signature = Sha256Hex(Secret + payment.PaymentId + response.ConfirmationCode + response.InvoiceNumber);
-
-        Assert.IsType<OkResult>(await Controller(site).Post(response));
+        Assert.IsType<OkResult>(await Controller(site).Post(OlderSignatureConfirmation(payment.PaymentId)));
         Assert.Single(site.Payments.Captures(payment.PaymentId));
     }
 
@@ -126,15 +118,75 @@ public sealed class NetgiroTests
 
     [Theory]
     [InlineData("1", "1")]
-    [InlineData("1990", "5")]
+    [InlineData("1", "5")]
     [InlineData("1990", "")]
-    public async Task RejectsConfirmationForAnotherAmountOrACanceledPayment(string totalAmount, string status)
+    [InlineData("1990", "3")]
+    public async Task RejectsCallbackForAnotherAmountOrAnUnknownStatus(string totalAmount, string status)
     {
         var site = new ProviderTestSite();
         var (payment, _) = await RequestAsync(site, 1990);
 
-        // Correctly signed, but not a payment of this order
+        // Correctly signed, but not a payment of this order or not a status Netgiro documents
         Assert.IsType<BadRequestResult>(await Controller(site).Post(Confirmation(payment.PaymentId, totalAmount, status)));
+        Assert.Empty(site.Payments.Recorded);
+    }
+
+    [Fact]
+    public async Task SignedCancellationIsRecordedOnceAsCancelled()
+    {
+        var site = new ProviderTestSite();
+        var (payment, _) = await RequestAsync(site, 1990);
+
+        Assert.IsType<OkResult>(await Controller(site).Post(Confirmation(payment.PaymentId, "1990", status: "5")));
+        Assert.IsType<OkResult>(await Controller(site).Post(Confirmation(payment.PaymentId, "1990", status: "5")));
+
+        var cancelled = Assert.Single(site.Payments.Recorded);
+        Assert.Equal(PaymentTransactionType.Cancelled, cancelled.Type);
+        Assert.Equal(payment.PaymentId, cancelled.PaymentId);
+        Assert.False(string.IsNullOrWhiteSpace(cancelled.Message));
+        Assert.DoesNotContain("Signature", cancelled.RawData!, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(site.Payments.Captures(payment.PaymentId));
+    }
+
+    [Fact]
+    public async Task StatusIsNotTrustedWithoutNetgiroSignature()
+    {
+        var site = new ProviderTestSite();
+        var (payment, _) = await RequestAsync(site, 1990);
+
+        // The older signature does not cover the status, so a status sent with it changes nothing.
+        var response = OlderSignatureConfirmation(payment.PaymentId);
+        response.Status = "5";
+
+        Assert.IsType<OkResult>(await Controller(site).Post(response));
+        Assert.Equal(PaymentTransactionType.Captured, Assert.Single(site.Payments.Recorded).Type);
+    }
+
+    [Fact]
+    public async Task OlderSignatureIsRefusedWhenNetgiroSignatureIsRequired()
+    {
+        var site = new ProviderTestSite();
+        var (payment, _) = await RequestAsync(site, 1990, requireNetgiroSignature: true);
+
+        Assert.IsType<BadRequestResult>(await Controller(site).Post(OlderSignatureConfirmation(payment.PaymentId)));
+        Assert.Empty(site.Payments.Recorded);
+
+        // A callback carrying NetgiroSignature is still recorded.
+        Assert.IsType<OkResult>(await Controller(site).Post(Confirmation(payment.PaymentId, "1990", status: "2")));
+        Assert.Single(site.Payments.Captures(payment.PaymentId));
+    }
+
+    [Fact]
+    public async Task RequireNetgiroSignatureIsReadFromTheProviderNodeAndStoredWithThePayment()
+    {
+        var site = new ProviderTestSite
+        {
+            ProviderNode = settings => ((NetgiroSettings)settings!).RequireNetgiroSignature = true,
+        };
+        var (payment, _) = await RequestAsync(site, 1990);
+
+        Assert.True(payment.GetProviderData<NetgiroSettings>()!.RequireNetgiroSignature);
+        Assert.IsType<BadRequestResult>(await Controller(site).Post(OlderSignatureConfirmation(payment.PaymentId)));
         Assert.Empty(site.Payments.Recorded);
     }
 
@@ -234,13 +286,15 @@ public sealed class NetgiroTests
         Assert.Equal("def", response.Signature);
     }
 
-    static async Task<(OrderPayment Payment, Dictionary<string, string> Form)> RequestAsync(ProviderTestSite site, decimal total)
+    static async Task<(OrderPayment Payment, Dictionary<string, string> Form)> RequestAsync(
+        ProviderTestSite site, decimal total, bool requireNetgiroSignature = false)
     {
         var settings = site.Settings(total);
         settings.CustomSettings[typeof(NetgiroSettings)] = new NetgiroSettings
         {
             ApplicationId = ApplicationId, Secret = Secret,
             PaymentPageUrl = new Uri("https://netgiro.example/securepay/"),
+            RequireNetgiroSignature = requireNetgiroSignature,
         };
         var html = await new NetgiroPayment(NullLogger<NetgiroPayment>.Instance, site.Configuration, site, site.Payments, site,
             new ConfigurationBuilder().Build()).RequestAsync(settings);
@@ -263,6 +317,21 @@ public sealed class NetgiroTests
         // SHA256(SecretKey + ReferenceNumber + TransactionId + InvoiceNumber + TotalAmount + Status)
         response.NetgiroSignature = Sha256Hex(
             Secret + reference + response.TransactionId + response.InvoiceNumber + totalAmount + status);
+
+        return response;
+    }
+
+    /// <summary>A confirmation signed only with the older signature, which covers neither amount nor status.</summary>
+    static NetgiroResponse OlderSignatureConfirmation(Guid reference)
+    {
+        var response = new NetgiroResponse
+        {
+            ReferenceNumber = reference,
+            ConfirmationCode = "6f9619ff-8b86-d011-b42d-00c04fc964ff",
+            InvoiceNumber = "1234",
+        };
+        // SHA256(SecretKey + ReferenceNumber + ConfirmationCode + InvoiceNumber)
+        response.Signature = Sha256Hex(Secret + reference + response.ConfirmationCode + response.InvoiceNumber);
 
         return response;
     }

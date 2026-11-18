@@ -120,6 +120,16 @@ public class BorgunResponseController : ControllerBase
                 return BadRequest();
             }
 
+            // The hash covers the order id, amount and currency, not the status: only a successful status is a capture.
+            if (!string.Equals(borgunResponse.Status, "Ok", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Borgun Payment Response - Status is not Ok, nothing recorded. " + PaymentLog.Template + " Status: {Status}",
+                    payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, borgunResponse.Status);
+
+                return Ok();
+            }
+
             // Recorded once per payment, however often Borgun repeats the callback.
             var result = await _payments.RecordAsync(new PaymentTransaction
             {

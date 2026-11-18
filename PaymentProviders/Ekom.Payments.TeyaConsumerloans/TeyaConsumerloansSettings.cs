@@ -19,13 +19,16 @@ public class TeyaConsumerloansSettings : PaymentSettingsBase<TeyaConsumerloansSe
     public string? Password { get; set; }
 
     /// <summary>
-    /// Base URL for the Teya/Borgun self-service loan portal.
-    /// The token returned from /online/token/web is appended as the configured token query parameter.
+    /// Base URL for the Teya/Borgun self-service loan portal. Required.
+    /// The customer is sent to this URL with the token returned from /online/token/web appended as its last
+    /// path segment, e.g. https://portal.example/consumerloans/{token}. A trailing slash is optional and a
+    /// query string is kept.
     /// </summary>
     public Uri? LoanPortalUrl { get; set; }
 
     /// <summary>
-    /// Optional store or merchant identifier expected by the Consumer Loans API.
+    /// Merchant number at Teya/Borgun. Required: it is sent with the loan application, the loan status
+    /// checks and the loan validation.
     /// </summary>
     public string? MerchantId { get; set; }
 

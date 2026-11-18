@@ -153,6 +153,57 @@ public sealed class BorgunTests
         Assert.Single(f.Payments.Captures(legacy.UniqueId));
     }
 
+    [Theory]
+    [InlineData("Cancelled")]
+    [InlineData("Error")]
+    [InlineData(null)]
+    public async Task VerifiedCallbackWithoutAnOkStatusRecordsNothing(string? status)
+    {
+        var f = new Fixture();
+        var started = await f.RequestAsync(1990);
+        var response = Confirmation(started.Payment.PaymentId, started.Form["orderid"], started.Form["amount"]);
+        response.Status = status!;
+
+        await f.Controller().Post(response);
+
+        Assert.Empty(f.Payments.Recorded);
+    }
+
+    [Theory]
+    [InlineData("PaymentPageUrl")]
+    [InlineData("MerchantId")]
+    [InlineData("SecretCode")]
+    public async Task MissingRequiredSettingFailsClearlyBeforeThePaymentIsStored(string setting)
+    {
+        var f = new Fixture();
+
+        var ex = await Assert.ThrowsAsync<ArgumentNullException>(() => f.RequestAsync(1990, "IS0001", configure: borgun =>
+        {
+            if (setting == "PaymentPageUrl") borgun.PaymentPageUrl = null!;
+            if (setting == "MerchantId") borgun.MerchantId = null!;
+            if (setting == "SecretCode") borgun.SecretCode = null!;
+        }));
+
+        Assert.Contains(setting, ex.ParamName, StringComparison.Ordinal);
+        Assert.Empty(f.Payments.Payments);
+    }
+
+    [Theory]
+    [InlineData("is-IS", "IS")]
+    [InlineData("en-US", "EN")]
+    [InlineData("en-GB", "EN")]
+    [InlineData("de_DE", "DE")]
+    [InlineData("EN", "EN")]
+    [InlineData("is", "IS")]
+    public async Task SendsTheTwoLetterLanguageCodeInUpperCase(string language, string expected)
+    {
+        var f = new Fixture();
+
+        var started = await f.RequestAsync(1990, "IS0001", language);
+
+        Assert.Equal(expected, started.Form["language"]);
+    }
+
     static BorgunResponse Confirmation(Guid reference, string orderId, string amount) => new()
     {
         Reference = reference.ToString(),
@@ -192,14 +243,18 @@ public sealed class BorgunTests
             return settings;
         }
 
-        public async Task<Started> RequestAsync(decimal total, string orderNumber = "")
+        public async Task<Started> RequestAsync(
+            decimal total, string orderNumber = "", string language = "is-IS", Action<BorgunSettings>? configure = null)
         {
             var settings = Settings(total, orderNumber);
-            settings.CustomSettings[typeof(BorgunSettings)] = new BorgunSettings
+            settings.Language = language;
+            var borgunSettings = new BorgunSettings
             {
                 MerchantId = "9275444", SecretCode = Secret, PaymentGatewayId = 16,
                 PaymentPageUrl = new Uri("https://borgun.example/securepay/"),
             };
+            configure?.Invoke(borgunSettings);
+            settings.CustomSettings[typeof(BorgunSettings)] = borgunSettings;
             var html = await new BorgunPayment(NullLogger<BorgunPayment>.Instance, _settings, this, Payments, this,
                 new ConfigurationBuilder().Build()).RequestAsync(settings);
             var form = Regex.Matches(html, "<input type=\"hidden\" name=\"([^\"]*)\" value=\"([^\"]*)\">")

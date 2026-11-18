@@ -3,8 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace Ekom.Payments.SiminnPay.Model;
 
 /// <summary>
-/// Callback data from AltaPay request to retrieve a custom payment form.
-/// Documentation: https://documentation.altapay.com/Content/Ecom/Payment%20Pages/Payment%20Page%20Form.htm
+/// Not used by Siminn Pay: Siminn Pay has no custom payment form callback. The class is kept so
+/// code that references it still compiles; Siminn Pay's notifications are read as <see cref="SiminnPayOrderStatus"/>.
 /// </summary>
 public class CallbackFromRequest
 {

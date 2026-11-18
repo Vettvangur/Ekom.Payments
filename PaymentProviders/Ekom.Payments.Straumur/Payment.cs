@@ -120,8 +120,8 @@ public class Payment : IPaymentProvider
                 {
                     Name = lineItem.Title,
                     Quantity = lineItem.Quantity,
-                    UnitPrice = (int)lineItem.Price * 100, // Price is in ISK, Straumur requires two decimal places
-                    Amount = (int)lineItem.GrandTotal * 100, // Price is in ISK, Straumur requires two decimal places
+                    UnitPrice = StraumurAmount.ToMinorUnits(lineItem.Price, paymentSettings.Currency),
+                    Amount = StraumurAmount.ToMinorUnits(lineItem.GrandTotal, paymentSettings.Currency),
                 };
 
                 items.Add(item);
@@ -142,7 +142,7 @@ public class Payment : IPaymentProvider
                 TerminalIdentifier = straumurSettings.TerminalIdentifier,
                 Reference = reference,
                 Currency = paymentSettings.Currency,
-                Amount = (int)total * 100, // Price is in ISK, Straumur requires two decimal places
+                Amount = StraumurAmount.ToMinorUnits(total, paymentSettings.Currency),
                 ReturnUrl = paymentSettings.SuccessUrl.ToString(),
                 Culture = ParseSupportedLanguages(paymentSettings.Language),
                 ExpiresAt = expiresAt,
@@ -171,7 +171,7 @@ public class Payment : IPaymentProvider
                     TerminalIdentifier = straumurSettings.TerminalIdentifier,
                     Reference = reference,
                     Currency = paymentSettings.Currency,
-                    Amount = (int)total * 100,
+                    Amount = StraumurAmount.ToMinorUnits(total, paymentSettings.Currency),
                     ReturnUrl = paymentSettings.SuccessUrl.ToString(),
                     Culture = ParseSupportedLanguages(paymentSettings.Language),
                     ExpiresAt = expiresAt,

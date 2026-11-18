@@ -1,9 +1,12 @@
 using Ekom.Models.Payments;
 using Ekom.Payments.Straumur;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Xunit;
 using StraumurPayment = Ekom.Payments.Straumur.Payment;
 using StraumurResponse = Ekom.Payments.Straumur.Response;
@@ -152,6 +155,48 @@ public sealed class StraumurTests
         Assert.Single(site.Payments.Captures(legacy.UniqueId));
     }
 
+    [Theory]
+    [InlineData("ISK", 1990, 199000)]
+    [InlineData("ISK", 19.99, 2000)]
+    [InlineData("ISK", 19.5, 2000)]
+    [InlineData("EUR", 19.99, 1999)]
+    [InlineData("EUR", 19.995, 2000)]
+    [InlineData("EUR", 19.994, 1999)]
+    public async Task RequestSendsAmountsInMinorUnitsWithoutLosingTheDecimals(string currency, decimal price, int expected)
+    {
+        var site = new ProviderTestSite();
+        using var api = new StraumurApi();
+        var settings = site.Settings(price);
+        settings.Currency = currency;
+        settings.CustomSettings[typeof(StraumurSettings)] = new StraumurSettings
+        {
+            TerminalIdentifier = "terminal-1", ApiKey = "straumur-test-api-key", HmacKey = Key,
+            PaymentPageUrl = new Uri("https://straumur.example/api/v1/hostedcheckout"),
+        };
+
+        await new StraumurPayment(NullLogger<StraumurPayment>.Instance, site.Configuration, site, site.Payments, site, api,
+            new ConfigurationBuilder().Build()).RequestAsync(settings);
+
+        var request = api.Request!.RootElement;
+        Assert.Equal(expected, request.GetProperty("amount").GetInt32());
+        var item = Assert.Single(request.GetProperty("items").EnumerateArray());
+        Assert.Equal(expected, item.GetProperty("unitPrice").GetInt32());
+        Assert.Equal(expected, item.GetProperty("amount").GetInt32());
+    }
+
+    [Fact]
+    public async Task RefundInACurrencyWithDecimalsIsRecordedInTheCurrencysOwnUnit()
+    {
+        var site = new ProviderTestSite();
+        var payment = await CreateAsync(site, new StraumurSettings { HmacKey = Key });
+        await Controller(site).Post(Event(payment.PaymentId, PaymentEvent.Authorization));
+
+        var refund = Event(payment.PaymentId, PaymentEvent.Refund, payfacReference: "refund-1", amount: "1999", currency: "EUR");
+        Assert.IsType<OkResult>(await Controller(site).Post(refund));
+
+        Assert.Equal(19.99m, site.Payments.Recorded[^1].Amount);
+    }
+
     static Task<OrderPayment> CreateAsync(ProviderTestSite site, StraumurSettings settings)
         => site.Payments.CreateAsync(site.Settings(1990), StraumurPayment._ppNodeName, 1990m, settings);
 
@@ -159,7 +204,8 @@ public sealed class StraumurTests
         NullLogger<StraumurResponseController>.Instance, site.Configuration, site.Payments, site.LegacyOrders, site));
 
     static StraumurResponse Event(Guid paymentId, PaymentEvent eventType, string success = "true", string? reason = "383528:1111:03/2030",
-        string payfacReference = "payfac-1", string amount = "199000", string? merchantReference = null, string key = Key)
+        string payfacReference = "payfac-1", string amount = "199000", string? merchantReference = null, string key = Key,
+        string currency = "ISK")
     {
         var response = new StraumurResponse
         {
@@ -167,7 +213,7 @@ public sealed class StraumurTests
             PayfacReference = payfacReference,
             MerchantReference = merchantReference ?? paymentId.ToString(),
             Amount = amount,
-            Currency = "ISK",
+            Currency = currency,
             Reason = reason,
             Success = success,
             AdditionalData = new PaymentEventDetails { EventType = eventType, CardNumber = "****1111", AuthCode = "383528", Token = "card-token" },
@@ -179,5 +225,25 @@ public sealed class StraumurTests
                 response.Amount, response.Currency, response.Reason, response.Success))));
 
         return response;
+    }
+
+    /// <summary>Stands in for Straumur's hosted checkout API: keeps the payment request and answers with a checkout url.</summary>
+    sealed class StraumurApi : HttpMessageHandler, IHttpClientFactory
+    {
+        public JsonDocument? Request { get; private set; }
+
+        public HttpClient CreateClient(string name) => new(this, disposeHandler: false);
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Request = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"url\":\"https://straumur.example/checkout/1\",\"checkoutReference\":\"checkout-1\"}",
+                    Encoding.UTF8, "application/json"),
+            };
+        }
     }
 }
