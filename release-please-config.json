@@ -154,6 +154,21 @@
           "xpath": "/Project/PropertyGroup/Version"
         }
       ]
+    },
+    "PaymentProviders/Ekom.Payments.PayPal": {
+      "component": "Ekom.Payments.PayPal",
+      "package-name": "Ekom.Payments.PayPal",
+      "include-component-in-tag": true,
+      "release-type": "simple",
+      "versioning": "always-bump-patch",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Ekom.Payments.PayPal.csproj",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ]
     }
   },
   "bootstrap-sha": "9370e11512b0cb13156defb65ab6f30ddf7ff0d0",
