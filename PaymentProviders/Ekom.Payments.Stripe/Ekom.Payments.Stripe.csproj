@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+
+        <!-- Package properties -->
+        <PackageId>Ekom.Payments.Stripe</PackageId>
+        <Version>1.1.0</Version>
+        <!-- Minimum published Core version used when packaging this provider. -->
+        <CorePackageVersion>1.1.0</CorePackageVersion>
+        <Title>Ekom Payments Stripe</Title>
+        <Authors>Vettvangur</Authors>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
+        <PackageIcon>images/Ekom_Logo.png</PackageIcon>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Description>Ekom Payments Stripe - Vettvangur E-Commerce solution</Description>
+        <PackageReleaseNotes/>
+        <Copyright>Copyright 2026</Copyright>
+        <PackageTags/>
+
+        <!-- Optional: Publish the repository URL in the built .nupkg (in the NuSpec <Repository> element) -->
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+
+        <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+
+        <!-- Optional: Build symbol package (.snupkg) to distribute the PDB containing Source Link -->
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+        <!-- Enable NuGet package caching -->
+        <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Package icon and readme -->
+        <None Include="../../Ekom_Logo.png" Pack="true" PackagePath="images/"/>
+        <None Include="README.md" Pack="true" PackagePath=""/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Ekom.Payments.Tests</_Parameter1>
+        </AssemblyAttribute>
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\Core\Ekom.Payments.Core.csproj" Condition="'$(UsePublishedCore)' != 'true'"/>
+        <PackageReference Include="Ekom.Payments.Core" Version="$(CorePackageVersion)" Condition="'$(UsePublishedCore)' == 'true'"/>
+    </ItemGroup>
+
+</Project>

@@ -40,6 +40,7 @@ Install one package per gateway next to Ekom. Nothing else is needed: Ekom finds
 | Valitor | `Ekom.Payments.Valitor` |
 | Netgíró | `Ekom.Payments.Netgiro` |
 | Straumur | `Ekom.Payments.Straumur` |
+| Stripe Checkout | `Ekom.Payments.Stripe` |
 | AltaPay | `Ekom.Payments.AltaPay` |
 | PayTrail | `Ekom.Payments.PayTrail` |
 | Síminn Pay | `Ekom.Payments.SiminnPay` |

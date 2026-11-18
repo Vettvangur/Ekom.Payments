@@ -61,5 +61,12 @@
     "projects": [
       "PaymentProviders/Ekom.Payments.TeyaConsumerloans/Ekom.Payments.TeyaConsumerloans.csproj"
     ]
+  },
+  "Ekom.Payments.Stripe": {
+    "path": "PaymentProviders/Ekom.Payments.Stripe",
+    "version-file": "PaymentProviders/Ekom.Payments.Stripe/Ekom.Payments.Stripe.csproj",
+    "projects": [
+      "PaymentProviders/Ekom.Payments.Stripe/Ekom.Payments.Stripe.csproj"
+    ]
   }
 }
