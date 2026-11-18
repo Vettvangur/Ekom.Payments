@@ -43,6 +43,7 @@ Install one package per gateway next to Ekom. Nothing else is needed: Ekom finds
 | Stripe Checkout | `Ekom.Payments.Stripe` |
 | AltaPay | `Ekom.Payments.AltaPay` |
 | PayTrail | `Ekom.Payments.PayTrail` |
+| PayPal | `Ekom.Payments.PayPal` |
 | Síminn Pay | `Ekom.Payments.SiminnPay` |
 | Teya consumer loans | `Ekom.Payments.TeyaConsumerloans` |
 

@@ -11,7 +11,7 @@ workflow, `publish-ekom-payments.yml`. Release groups are defined in
   packages no longer exist: Ekom owns what they did.
 - Every package requires the Ekom version in `EkomVersion` (`Directory.Build.props`).
   Release Ekom first, then set `EkomVersion` to that release before publishing here.
-- Each of the nine published providers has its own version in its project file,
+- Each of the ten published providers has its own version in its project file,
   release-please manifest entry, changelog, and tag. For example,
   `Ekom.Payments.Netgiro-v1.0.0` publishes only Netgiro.
 - All pending releases share one release PR, `chore: release main`. It lists every

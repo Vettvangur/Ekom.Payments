@@ -68,5 +68,12 @@
     "projects": [
       "PaymentProviders/Ekom.Payments.Stripe/Ekom.Payments.Stripe.csproj"
     ]
+  },
+  "Ekom.Payments.PayPal": {
+    "path": "PaymentProviders/Ekom.Payments.PayPal",
+    "version-file": "PaymentProviders/Ekom.Payments.PayPal/Ekom.Payments.PayPal.csproj",
+    "projects": [
+      "PaymentProviders/Ekom.Payments.PayPal/Ekom.Payments.PayPal.csproj"
+    ]
   }
 }
