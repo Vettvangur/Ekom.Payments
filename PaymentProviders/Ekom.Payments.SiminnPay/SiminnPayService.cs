@@ -48,12 +48,12 @@ namespace Ekom.Payments.SiminnPay
         {
             var order = new CreatePaymentOrderRequest
             {
-                Amount = payOrder.Amount,
+                Amount = WholeAmount(payOrder.Amount),
                 Description = payOrder.Description,
                 ReferenceId = payOrder.ReferenceId,
-                TimeToLive = _settings.TimeToLive > 0 ? _settings.TimeToLive : 60,
-                Currency = _settings.Currency,
-                PaymentType = _settings.PaymentType,
+                TimeToLive = _settings.TimeToLive > 0 ? _settings.TimeToLive : SiminnPaySettings.DefaultTimeToLive,
+                Currency = string.IsNullOrWhiteSpace(_settings.Currency) ? SiminnPaySettings.DefaultCurrency : _settings.Currency,
+                PaymentType = string.IsNullOrWhiteSpace(_settings.PaymentType) ? SiminnPaySettings.DefaultPaymentType : _settings.PaymentType,
                 Recipients = [ new() {
                         Phone = payOrder.PhoneNumber,
                         SendNotification = true
@@ -79,6 +79,13 @@ namespace Ekom.Payments.SiminnPay
 
             return JsonConvert.DeserializeObject<CreatePaymentOrderResponse>(content);
         }
+
+        /// <summary>
+        /// The amount Siminn Pay is asked for: whole units, rounded half away from zero.
+        /// Siminn Pay signs its notifications with a whole amount, so this is also the amount a notification is checked against.
+        /// </summary>
+        internal static decimal WholeAmount(decimal amount)
+            => Math.Round(amount, 0, MidpointRounding.AwayFromZero);
 
         /// <summary>
         /// Get siminn pay order status
