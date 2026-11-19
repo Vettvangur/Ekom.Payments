@@ -7,7 +7,7 @@
 
         <!-- Package properties -->
         <PackageId>Ekom.Payments.Rapyd</PackageId>
-        <Version>1.1.1</Version>
+        <Version>1.1.2</Version>
         <!-- Minimum published Core version used when packaging this provider. -->
         <CorePackageVersion>1.1.0</CorePackageVersion>
         <Title>Ekom Payments Rapyd</Title>
