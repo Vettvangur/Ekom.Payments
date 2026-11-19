@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Ekom.Payments.Borgun;
+namespace Ekom.Payments.Teya;
 class CheckHashMessage
 {
     public string Message;

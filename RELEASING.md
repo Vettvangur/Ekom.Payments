@@ -21,6 +21,12 @@ workflow, `publish-ekom-payments.yml`. Release groups are defined in
   `release-please-config.json` and `.release-please-manifest.json`, and has to be added
   to the NuGet trusted publishing policy before its first release.
 
+`Ekom.Payments.Teya` and `Ekom.Payments.Rapyd` are the former `Ekom.Payments.Borgun` and
+`Ekom.Payments.Valitor`, continuing their version numbers under new package ids and tags.
+The NuGet trusted publishing policy for this repository matches `Ekom.Payments.*` and allows
+pushing new packages, so it already covers both. The old packages should be deprecated on
+NuGet.org in favour of them once the first release is out.
+
 Release-please bumps the patch number only (`1.1.1`, `1.1.2`, ...),
 independently for each group. Provider-only commits are excluded from
 the shared group's release history; each provider tracks its own directory.

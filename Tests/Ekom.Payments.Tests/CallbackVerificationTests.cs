@@ -2,7 +2,7 @@ using Ekom.Payments.AltaPay;
 using Ekom.Payments.AltaPay.Model;
 using Ekom.Payments.Helpers;
 using Ekom.Payments.Netgiro;
-using Ekom.Payments.Valitor;
+using Ekom.Payments.Rapyd;
 using LinqToDB;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;

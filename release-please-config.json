@@ -20,9 +20,9 @@
         "Tests"
       ]
     },
-    "PaymentProviders/Ekom.Payments.Valitor": {
-      "component": "Ekom.Payments.Valitor",
-      "package-name": "Ekom.Payments.Valitor",
+    "PaymentProviders/Ekom.Payments.Rapyd": {
+      "component": "Ekom.Payments.Rapyd",
+      "package-name": "Ekom.Payments.Rapyd",
       "include-component-in-tag": true,
       "release-type": "simple",
       "versioning": "always-bump-patch",
@@ -30,14 +30,14 @@
       "extra-files": [
         {
           "type": "xml",
-          "path": "Ekom.Payments.Valitor.csproj",
+          "path": "Ekom.Payments.Rapyd.csproj",
           "xpath": "/Project/PropertyGroup/Version"
         }
       ]
     },
-    "PaymentProviders/Ekom.Payments.Borgun": {
-      "component": "Ekom.Payments.Borgun",
-      "package-name": "Ekom.Payments.Borgun",
+    "PaymentProviders/Ekom.Payments.Teya": {
+      "component": "Ekom.Payments.Teya",
+      "package-name": "Ekom.Payments.Teya",
       "include-component-in-tag": true,
       "release-type": "simple",
       "versioning": "always-bump-patch",
@@ -45,7 +45,7 @@
       "extra-files": [
         {
           "type": "xml",
-          "path": "Ekom.Payments.Borgun.csproj",
+          "path": "Ekom.Payments.Teya.csproj",
           "xpath": "/Project/PropertyGroup/Version"
         }
       ]

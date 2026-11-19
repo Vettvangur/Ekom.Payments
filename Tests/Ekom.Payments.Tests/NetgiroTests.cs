@@ -1,6 +1,6 @@
 using Ekom.Models.Payments;
 using Ekom.Payments.Netgiro;
-using Ekom.Payments.Valitor;
+using Ekom.Payments.Rapyd;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
@@ -207,17 +207,17 @@ public sealed class NetgiroTests
     public async Task DoesNotConfirmPaymentsOfOtherProviders()
     {
         var site = new ProviderTestSite();
-        var valitor = await site.Payments.CreateAsync(site.Settings(1990), "valitor", 1990m,
-            new ValitorSettings { MerchantId = "1", VerificationCode = "valitor-test-code" });
+        var rapyd = await site.Payments.CreateAsync(site.Settings(1990), "valitor", 1990m,
+            new RapydSettings { MerchantId = "1", VerificationCode = "valitor-test-code" });
 
         // The payment has no Netgiro secret, anyone can compute a signature without one
         var response = new NetgiroResponse
         {
-            ReferenceNumber = valitor.PaymentId,
+            ReferenceNumber = rapyd.PaymentId,
             ConfirmationCode = "6f9619ff-8b86-d011-b42d-00c04fc964ff",
             InvoiceNumber = "1234",
         };
-        response.Signature = Sha256Hex(valitor.PaymentId + response.ConfirmationCode + response.InvoiceNumber);
+        response.Signature = Sha256Hex(rapyd.PaymentId + response.ConfirmationCode + response.InvoiceNumber);
 
         Assert.IsType<NotFoundResult>(await Controller(site).Post(response));
         Assert.Empty(site.Payments.Recorded);
@@ -228,7 +228,7 @@ public sealed class NetgiroTests
     {
         var site = new ProviderTestSite();
         // A payment of another provider created before providers were recorded on payments
-        var legacy = site.AddLegacyPayment(1990, new ValitorSettings { MerchantId = "1", VerificationCode = "valitor-test-code" }, provider: null);
+        var legacy = site.AddLegacyPayment(1990, new RapydSettings { MerchantId = "1", VerificationCode = "valitor-test-code" }, provider: null);
 
         var response = new NetgiroResponse
         {

@@ -1,7 +1,7 @@
 {
   ".": "1.1.3",
-  "PaymentProviders/Ekom.Payments.Valitor": "1.1.1",
-  "PaymentProviders/Ekom.Payments.Borgun": "1.1.1",
+  "PaymentProviders/Ekom.Payments.Rapyd": "1.1.1",
+  "PaymentProviders/Ekom.Payments.Teya": "1.1.1",
   "PaymentProviders/Ekom.Payments.Netgiro": "1.1.1",
   "PaymentProviders/Ekom.Payments.Straumur": "1.1.1",
   "PaymentProviders/Ekom.Payments.AltaPay": "1.1.1",

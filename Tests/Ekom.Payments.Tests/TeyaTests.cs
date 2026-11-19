@@ -1,5 +1,5 @@
 using Ekom.Models.Payments;
-using Ekom.Payments.Borgun;
+using Ekom.Payments.Teya;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -12,16 +12,16 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Xunit;
-using BorgunPayment = Ekom.Payments.Borgun.Payment;
-using BorgunResponse = Ekom.Payments.Borgun.Response;
+using TeyaPayment = Ekom.Payments.Teya.Payment;
+using TeyaResponse = Ekom.Payments.Teya.Response;
 
 namespace Ekom.Payments.Tests;
 
 /// <summary>
-/// Borgun stores its payments on the Ekom order: a verified callback records one capture,
+/// Teya stores its payments on the Ekom order: a verified callback records one capture,
 /// anything that cannot be verified records nothing.
 /// </summary>
-public sealed class BorgunTests
+public sealed class TeyaTests
 {
     const string Secret = "borgun-test-secret";
 
@@ -40,7 +40,7 @@ public sealed class BorgunTests
         Assert.Equal("IS0001", started.Form["orderid"]);
         Assert.Equal("1990,00", started.Form["amount"]);
         // The secret is needed to verify the callback, card details are never stored.
-        Assert.Equal(Secret, started.Payment.GetProviderData<BorgunSettings>()!.SecretCode);
+        Assert.Equal(Secret, started.Payment.GetProviderData<TeyaSettings>()!.SecretCode);
         Assert.DoesNotContain("\"CardNumber\"", started.Payment.Settings, StringComparison.Ordinal);
         Assert.DoesNotContain("CardCVV", started.Payment.Settings, StringComparison.Ordinal);
     }
@@ -59,7 +59,7 @@ public sealed class BorgunTests
         Assert.Equal(1990m, capture.Amount);
         Assert.Equal("123456", capture.AuthorizationCode);
         Assert.Equal("****1111", capture.MaskedCardNumber);
-        Assert.Contains(capture.Details!, x => x.Label == "Borgun order id" && x.Value == started.Form["orderid"]);
+        Assert.Contains(capture.Details!, x => x.Label == "Teya order id" && x.Value == started.Form["orderid"]);
         // The stored response never holds the signature.
         Assert.DoesNotContain(response.OrderHash, capture.RawData!, StringComparison.OrdinalIgnoreCase);
     }
@@ -71,7 +71,7 @@ public sealed class BorgunTests
         var started = await f.RequestAsync(1990);
 
         // The payment request is signed for merchantid|returnurlsuccess|returnurlsuccessserver|orderid|amount|currency
-        var response = new BorgunResponse
+        var response = new TeyaResponse
         {
             Reference = started.Payment.PaymentId.ToString(),
             Status = "OK",
@@ -121,11 +121,11 @@ public sealed class BorgunTests
     {
         var f = new Fixture();
         var netgiro = await f.Payments.CreateAsync(f.Settings(1990, "IS0001"), "netgiro", 1990m,
-            new BorgunSettings { MerchantId = "9275444", SecretCode = Secret });
+            new TeyaSettings { MerchantId = "9275444", SecretCode = Secret });
 
         Assert.IsType<NotFoundResult>(await f.Controller().Post(Confirmation(netgiro.PaymentId, "IS0001", "1990,00")));
         Assert.IsType<NotFoundResult>(await f.Controller().Post(Confirmation(Guid.NewGuid(), "IS0001", "1990,00")));
-        Assert.IsType<BadRequestResult>(await f.Controller().Post(new BorgunResponse { Reference = "not-a-guid" }));
+        Assert.IsType<BadRequestResult>(await f.Controller().Post(new TeyaResponse { Reference = "not-a-guid" }));
         Assert.Empty(f.Payments.Recorded);
     }
 
@@ -177,11 +177,11 @@ public sealed class BorgunTests
     {
         var f = new Fixture();
 
-        var ex = await Assert.ThrowsAsync<ArgumentNullException>(() => f.RequestAsync(1990, "IS0001", configure: borgun =>
+        var ex = await Assert.ThrowsAsync<ArgumentNullException>(() => f.RequestAsync(1990, "IS0001", configure: teya =>
         {
-            if (setting == "PaymentPageUrl") borgun.PaymentPageUrl = null!;
-            if (setting == "MerchantId") borgun.MerchantId = null!;
-            if (setting == "SecretCode") borgun.SecretCode = null!;
+            if (setting == "PaymentPageUrl") teya.PaymentPageUrl = null!;
+            if (setting == "MerchantId") teya.MerchantId = null!;
+            if (setting == "SecretCode") teya.SecretCode = null!;
         }));
 
         Assert.Contains(setting, ex.ParamName, StringComparison.Ordinal);
@@ -204,7 +204,7 @@ public sealed class BorgunTests
         Assert.Equal(expected, started.Form["language"]);
     }
 
-    static BorgunResponse Confirmation(Guid reference, string orderId, string amount) => new()
+    static TeyaResponse Confirmation(Guid reference, string orderId, string amount) => new()
     {
         Reference = reference.ToString(),
         Status = "OK",
@@ -244,26 +244,26 @@ public sealed class BorgunTests
         }
 
         public async Task<Started> RequestAsync(
-            decimal total, string orderNumber = "", string language = "is-IS", Action<BorgunSettings>? configure = null)
+            decimal total, string orderNumber = "", string language = "is-IS", Action<TeyaSettings>? configure = null)
         {
             var settings = Settings(total, orderNumber);
             settings.Language = language;
-            var borgunSettings = new BorgunSettings
+            var teyaSettings = new TeyaSettings
             {
                 MerchantId = "9275444", SecretCode = Secret, PaymentGatewayId = 16,
                 PaymentPageUrl = new Uri("https://borgun.example/securepay/"),
             };
-            configure?.Invoke(borgunSettings);
-            settings.CustomSettings[typeof(BorgunSettings)] = borgunSettings;
-            var html = await new BorgunPayment(NullLogger<BorgunPayment>.Instance, _settings, this, Payments, this,
+            configure?.Invoke(teyaSettings);
+            settings.CustomSettings[typeof(TeyaSettings)] = teyaSettings;
+            var html = await new TeyaPayment(NullLogger<TeyaPayment>.Instance, _settings, this, Payments, this,
                 new ConfigurationBuilder().Build()).RequestAsync(settings);
             var form = Regex.Matches(html, "<input type=\"hidden\" name=\"([^\"]*)\" value=\"([^\"]*)\">")
                 .ToDictionary(x => WebUtility.HtmlDecode(x.Groups[1].Value), x => WebUtility.HtmlDecode(x.Groups[2].Value));
             return new Started(Payments.Payments[^1], form);
         }
 
-        public BorgunResponseController Controller(ILogger<BorgunResponseController>? logger = null)
-            => new(logger ?? NullLogger<BorgunResponseController>.Instance, _settings, Payments, LegacyOrders, this)
+        public TeyaResponseController Controller(ILogger<TeyaResponseController>? logger = null)
+            => new(logger ?? NullLogger<TeyaResponseController>.Instance, _settings, Payments, LegacyOrders, this)
             {
                 ControllerContext = new ControllerContext { HttpContext = CreateHttpContext() },
             };
@@ -283,7 +283,7 @@ public sealed class BorgunTests
         public Task SendAsync(MailMessage mailMessage) => Task.CompletedTask;
     }
 
-    /// <summary>The payment rows Borgun used before it recorded payments on the Ekom order.</summary>
+    /// <summary>The payment rows Teya used before it recorded payments on the Ekom order.</summary>
     sealed class LegacyOrders : IOrderService
     {
         public List<OrderStatus> Rows { get; } = [];
@@ -296,7 +296,7 @@ public sealed class BorgunTests
         public Task UpdateAsync(OrderStatus orderStatus) => throw new NotSupportedException();
     }
 
-    sealed class RecordingLogger : ILogger<BorgunResponseController>
+    sealed class RecordingLogger : ILogger<TeyaResponseController>
     {
         public List<string> Messages { get; } = [];
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;

@@ -5,16 +5,20 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 
-namespace Ekom.Payments.Borgun;
+namespace Ekom.Payments.Teya;
 
 /// <summary>
-/// Initiate a payment request with Borgun
+/// Initiate a payment request with Teya
 /// </summary>
 class Payment : IPaymentProvider
 {
+    /// <summary>
+    /// Still the Borgun name: it is the payment provider node name on existing sites
+    /// and the provider type stored on their payments.
+    /// </summary>
     internal const string _ppNodeName = "borgun";
     /// <summary>
-    /// Ekom.Payments ResponseController
+    /// Ekom.Payments ResponseController. Keeps the Borgun url so payments already in flight complete.
     /// </summary>
     const string reportPath = "/ekom/payments/BorgunResponse";
 
@@ -44,9 +48,9 @@ class Payment : IPaymentProvider
         _config = config;
     }
 
-    internal static string FormatPrice(decimal price, BorgunSettings borgunSettings)
+    internal static string FormatPrice(decimal price, TeyaSettings teyaSettings)
     {
-        if (borgunSettings.PreserveDecimalAmounts)
+        if (teyaSettings.PreserveDecimalAmounts)
         {
             var decimalAmount = Math.Round(price, 2, MidpointRounding.AwayFromZero);
             return decimalAmount.ToString("0.00", CultureInfo.InvariantCulture).Replace('.', ',');
@@ -57,7 +61,7 @@ class Payment : IPaymentProvider
     }
 
     /// <summary>
-    /// The language sent to Borgun: the two-letter language code in upper case, "IS" for "is-IS" and "EN" for "en-US".
+    /// The language sent to Teya: the two-letter language code in upper case, "IS" for "is-IS" and "EN" for "en-US".
     /// </summary>
     internal static string FormatLanguage(string language)
     {
@@ -68,15 +72,15 @@ class Payment : IPaymentProvider
     }
 
     /// <summary>
-    /// The order id sent to Borgun for a payment, Borgun returns it with the payment confirmation.
+    /// The order id sent to Teya for a payment, Teya returns it with the payment confirmation.
     /// </summary>
-    internal static string GetBorgunOrderId(PaymentSettings paymentSettings, Guid uniqueId)
+    internal static string GetTeyaOrderId(PaymentSettings paymentSettings, Guid uniqueId)
         => string.IsNullOrEmpty(paymentSettings.OrderNumber)
             ? uniqueId.ToString().Split('-').Last()
             : paymentSettings.OrderNumber;
 
     /// <summary>
-    /// Initiate a payment request with Borgun.
+    /// Initiate a payment request with Teya.
     /// When calling RequestAsync, always await the result.
     /// </summary>
     /// <param name="paymentSettings">Configuration object for PaymentProviders</param>
@@ -95,32 +99,32 @@ class Payment : IPaymentProvider
 
         try
         {
-            _logger.LogInformation("Borgun Payment Request - Start. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+            _logger.LogInformation("Teya Payment Request - Start. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
                 paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
 
-            var borgunSettings = paymentSettings.CustomSettings.ContainsKey(typeof(BorgunSettings))
-                ? (paymentSettings.CustomSettings[typeof(BorgunSettings)] as BorgunSettings)!
-                : new BorgunSettings();
+            var teyaSettings = paymentSettings.CustomSettings.ContainsKey(typeof(TeyaSettings))
+                ? (paymentSettings.CustomSettings[typeof(TeyaSettings)] as TeyaSettings)!
+                : new TeyaSettings();
 
             _uService.PopulatePaymentProviderProperties(
                 paymentSettings,
                 _ppNodeName,
-                borgunSettings,
-                BorgunSettings.Properties);
+                teyaSettings,
+                TeyaSettings.Properties);
 
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
 
             // Checked before the payment is stored, so a misconfigured provider stores nothing.
-            ArgumentNullException.ThrowIfNull(borgunSettings.PaymentPageUrl);
+            ArgumentNullException.ThrowIfNull(teyaSettings.PaymentPageUrl);
 
-            if (string.IsNullOrEmpty(borgunSettings.MerchantId))
+            if (string.IsNullOrEmpty(teyaSettings.MerchantId))
             {
-                throw new ArgumentNullException(nameof(borgunSettings.MerchantId));
+                throw new ArgumentNullException(nameof(teyaSettings.MerchantId));
             }
 
-            if (string.IsNullOrEmpty(borgunSettings.SecretCode))
+            if (string.IsNullOrEmpty(teyaSettings.SecretCode))
             {
-                throw new ArgumentNullException(nameof(borgunSettings.SecretCode));
+                throw new ArgumentNullException(nameof(teyaSettings.SecretCode));
             }
 
             paymentSettings.SuccessUrl = PaymentsUriHelper.EnsureFullUri(paymentSettings.SuccessUrl, _httpCtx.Request);
@@ -134,13 +138,13 @@ class Payment : IPaymentProvider
             // Begin populating form values to be submitted
             var formValues = new Dictionary<string, string>
             {
-                { "merchantid", borgunSettings.MerchantId },
-                { "paymentgatewayid", borgunSettings.PaymentGatewayId.ToString() },
+                { "merchantid", teyaSettings.MerchantId },
+                { "paymentgatewayid", teyaSettings.PaymentGatewayId.ToString() },
                 { "returnurlsuccess", paymentSettings.SuccessUrl.ToString() },
                 { "returnurlcancel", paymentSettings.CancelUrl.ToString().AddQueryParam("paymentError","cancelPayment" ) },
                 { "returnurlerror", paymentSettings.ErrorUrl.ToString().AddQueryParam("paymentError","errorPayment" ) },
                 { "returnurlsuccessserver", reportUrl.ToString() },
-                { "amount", FormatPrice(total, borgunSettings) },
+                { "amount", FormatPrice(total, teyaSettings) },
                 { "currency", paymentSettings.Currency },
                 { "language", FormatLanguage(paymentSettings.Language) }
             };
@@ -151,26 +155,26 @@ class Payment : IPaymentProvider
 
                 formValues.Add("itemdescription_" + lineNumber, order.Title);
                 formValues.Add("itemcount_" + lineNumber, order.Quantity.ToString());
-                formValues.Add("itemunitamount_" + lineNumber, FormatPrice(order.Price, borgunSettings));
-                formValues.Add("itemamount_" + lineNumber, FormatPrice(order.GrandTotal, borgunSettings));
+                formValues.Add("itemunitamount_" + lineNumber, FormatPrice(order.Price, teyaSettings));
+                formValues.Add("itemamount_" + lineNumber, FormatPrice(order.GrandTotal, teyaSettings));
             }
 
-            //if (borgunSettings.SkipReceipt)
+            //if (teyaSettings.SkipReceipt)
             //{
                 formValues.Add("skipreceiptpage", "1");
             //}
 
-            if (!string.IsNullOrEmpty(borgunSettings.MerchantEmail))
+            if (!string.IsNullOrEmpty(teyaSettings.MerchantEmail))
             {
-                formValues.Add("merchantemail", borgunSettings.MerchantEmail);
+                formValues.Add("merchantemail", teyaSettings.MerchantEmail);
             }
 
-            if (borgunSettings.MerchantLogo != null)
+            if (teyaSettings.MerchantLogo != null)
             {
-                formValues.Add("merchantlogo", borgunSettings.MerchantLogo.ToString());
+                formValues.Add("merchantlogo", teyaSettings.MerchantLogo.ToString());
             }
 
-            // Borgun portal page type.
+            // Teya portal page type.
             // If set as 1 then cardholder is required to insert email, 
             // mobile number and home address. 
             // Merchant email parameter must be set since cardholder information is returned through email to merchant.
@@ -178,50 +182,50 @@ class Payment : IPaymentProvider
             // By default Customer is not asked for email, mobile number and home address
 
             // If == 1 Customer is presented with inputs for email, mobile number and home address
-            if (borgunSettings.RequireCustomerInformation
-            && !string.IsNullOrEmpty(borgunSettings.MerchantEmail))
+            if (teyaSettings.RequireCustomerInformation
+            && !string.IsNullOrEmpty(teyaSettings.MerchantEmail))
             {
                 formValues.Add("pagetype", "1");
             }
 
-            // Store the payment on the Ekom order. Borgun echoes the payment id back as "reference".
+            // Store the payment on the Ekom order. Teya echoes the payment id back as "reference".
             var payment = await _payments.CreateAsync(
                 paymentSettings,
                 _ppNodeName,
                 total,
-                borgunSettings,
+                teyaSettings,
                 httpContext: _httpCtx
             ).ConfigureAwait(false);
 
-            // Borgun only supports specific types of order id's
-            var borgunOrderId = GetBorgunOrderId(paymentSettings, payment.PaymentId);
+            // Teya only supports specific types of order id's
+            var teyaOrderId = GetTeyaOrderId(paymentSettings, payment.PaymentId);
 
             //CheckHash
-            var checkHash = CryptoHelpers.GetHMACSHA256(borgunSettings.SecretCode,
+            var checkHash = CryptoHelpers.GetHMACSHA256(teyaSettings.SecretCode,
                 new CheckHashMessage(
-                    borgunSettings.MerchantId,
+                    teyaSettings.MerchantId,
                     paymentSettings.SuccessUrl.ToString(),
                     reportUrl.ToString(),
-                    borgunOrderId,
-                    FormatPrice(total, borgunSettings),
+                    teyaOrderId,
+                    FormatPrice(total, teyaSettings),
                     paymentSettings.Currency
                 ).Message
             );
 
             formValues.Add("checkhash", checkHash);
             formValues.Add("reference", payment.PaymentId.ToString());
-            formValues.Add("orderid", borgunOrderId);
+            formValues.Add("orderid", teyaOrderId);
 
-            _logger.LogInformation("Borgun Payment Request - " + PaymentLog.Template + " Amount: {Total}",
+            _logger.LogInformation("Teya Payment Request - " + PaymentLog.Template + " Amount: {Total}",
                 payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, total);
 
             var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
 
-            return FormHelper.CreateRequest(formValues, borgunSettings.PaymentPageUrl.ToString(), cspNonce: cspNonce);
+            return FormHelper.CreateRequest(formValues, teyaSettings.PaymentPageUrl.ToString(), cspNonce: cspNonce);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Borgun Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+            _logger.LogError(ex, "Teya Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
                 paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }

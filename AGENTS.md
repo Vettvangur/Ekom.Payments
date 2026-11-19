@@ -13,6 +13,7 @@
 - The legacy model (`OrderStatus`, `PaymentData`, `OrderService`, `EnsureTablesExist`, `LegacyPaymentBridge`) only exists so payments started before a site upgraded still complete: `LegacyPaymentBridge.GetOrImportAsync` copies a legacy row to Ekom when its callback arrives. Do not build new behaviour on it.
 - `PaymentProviders/Ekom.Payments.*` are provider packages that reference `Core/` and target `net8.0`. All providers in the solution record payments on the Ekom order through `IOrderPayments`; `Ekom.Payments.AsynchronousExample` is the reference.
 
+- `Ekom.Payments.Teya` and `Ekom.Payments.Rapyd` are the former Borgun and Valitor packages. Their `_ppNodeName` (`borgun`, `valitor`) and callback routes keep the old names on purpose; do not rename them without a migration for existing sites.
 - Provider tests use `InMemoryOrderPayments` and `ProviderTestSite` in `Tests/Ekom.Payments.Tests`; one test file per provider.
 
 ## Repo-specific gotchas

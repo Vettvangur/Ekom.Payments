@@ -23,8 +23,8 @@ Each gateway is one NuGet package. A package sends the customer to the gateway, 
 | --- | --- | --- | --- | --- |
 | Stripe | Card and other methods, on Stripe's hosted Checkout page | [`Ekom.Payments.Stripe`](https://www.nuget.org/packages/Ekom.Payments.Stripe/) | `stripe` | [Stripe](https://vettvangur.gitbook.io/ekom/payments/stripe) |
 | PayPal | PayPal account, approved on PayPal's site | [`Ekom.Payments.PayPal`](https://www.nuget.org/packages/Ekom.Payments.PayPal/) | `payPal` | [PayPal](https://vettvangur.gitbook.io/ekom/payments/paypal) |
-| Borgun (Teya cards) | Card, on Borgun's hosted payment page | [`Ekom.Payments.Borgun`](https://www.nuget.org/packages/Ekom.Payments.Borgun/) | `borgun` | [Borgun](https://vettvangur.gitbook.io/ekom/payments/borgun) |
-| Valitor | Card or card loan, on Valitor's hosted payment page | [`Ekom.Payments.Valitor`](https://www.nuget.org/packages/Ekom.Payments.Valitor/) | `valitor` | [Valitor](https://vettvangur.gitbook.io/ekom/payments/valitor) |
+| Teya (formerly Borgun) | Card, on Teya's hosted payment page | [`Ekom.Payments.Teya`](https://www.nuget.org/packages/Ekom.Payments.Teya/) | `borgun` | [Teya](https://vettvangur.gitbook.io/ekom/payments/borgun) |
+| Rapyd (formerly Valitor) | Card or card loan, on Rapyd's hosted payment page | [`Ekom.Payments.Rapyd`](https://www.nuget.org/packages/Ekom.Payments.Rapyd/) | `valitor` | [Rapyd](https://vettvangur.gitbook.io/ekom/payments/valitor) |
 | Straumur | Card, on Straumur's hosted checkout page | [`Ekom.Payments.Straumur`](https://www.nuget.org/packages/Ekom.Payments.Straumur/) | `straumur` | [Straumur](https://vettvangur.gitbook.io/ekom/payments/straumur) |
 | Netgiro | Pay later, on Netgiro's payment page | [`Ekom.Payments.Netgiro`](https://www.nuget.org/packages/Ekom.Payments.Netgiro/) | `netgiro` | [Netgiro](https://vettvangur.gitbook.io/ekom/payments/netgiro) |
 | Siminn Pay | In the Siminn Pay app on the customer's phone | [`Ekom.Payments.SiminnPay`](https://www.nuget.org/packages/Ekom.Payments.SiminnPay/) | `siminnPay` | [Siminn Pay](https://vettvangur.gitbook.io/ekom/payments/siminn-pay) |
@@ -35,6 +35,15 @@ Each gateway is one NuGet package. A package sends the customer to the gateway, 
 Each guide lists what to install, every setting, the address to give the gateway, what the customer sees, and what Ekom records for each outcome.
 
 Offline payments, such as bank transfer or pay on pickup, need no package from this repository.
+
+### Teya and Rapyd were Borgun and Valitor
+
+`Ekom.Payments.Teya` replaces `Ekom.Payments.Borgun`, and `Ekom.Payments.Rapyd` replaces `Ekom.Payments.Valitor`. To move a site over:
+
+1. Replace the package reference.
+2. Rename the types in your code: the `Ekom.Payments.Borgun` namespace is `Ekom.Payments.Teya` and `BorgunSettings` is `TeyaSettings`; the `Ekom.Payments.Valitor` namespace is `Ekom.Payments.Rapyd`, and `ValitorSettings`, `ValitorResponseHelper` and `ValitorAHKException` are `RapydSettings`, `RapydResponseHelper` and `RapydAHKException`.
+
+Nothing else changes. The provider names stay `borgun` and `valitor`, and the callback addresses stay `/ekom/payments/borgunresponse` and `/ekom/payments/valitorresponse`, so the payment provider nodes, the gateway setup and payments already started keep working.
 
 ## Requirements
 
