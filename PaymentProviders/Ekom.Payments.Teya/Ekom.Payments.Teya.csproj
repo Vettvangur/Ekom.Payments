@@ -9,7 +9,7 @@
         <PackageId>Ekom.Payments.Teya</PackageId>
         <Version>1.1.2</Version>
         <!-- Minimum published Core version used when packaging this provider. -->
-        <CorePackageVersion>1.1.0</CorePackageVersion>
+        <CorePackageVersion>1.1.4</CorePackageVersion>
         <Title>Ekom Payments Teya</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>

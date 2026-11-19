@@ -42,7 +42,8 @@ change in each affected provider directory when a new package is required.
 ## Version line
 
 Every group is on `1.1.x`. The providers were rebuilt on Ekom's order payments in `1.1.0` and need
-Ekom 1.2.0 or later; every provider declares `CorePackageVersion` `1.1.0`.
+Ekom 1.2.0 or later; every provider declares `CorePackageVersion` `1.1.0`,
+except Teya and Rapyd, which need `1.1.4`: the first Core that lets those assembly names see its internals.
 
 No group has a `release-as` line in `release-please-config.json`. To move a group to a new minor or
 major version, add `"release-as": "<version>"` to it, make sure the publishing workflow accepts that
