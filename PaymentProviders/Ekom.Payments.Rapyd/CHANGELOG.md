@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/Vettvangur/Ekom.Payments/compare/Ekom.Payments.Rapyd-v1.1.1...Ekom.Payments.Rapyd-v1.1.2) (2026-11-19)
+
+
+### Features
+
+* rename the Borgun provider to Teya and Valitor to Rapyd ([#128](https://github.com/Vettvangur/Ekom.Payments/issues/128)) ([3d6deb6](https://github.com/Vettvangur/Ekom.Payments/commit/3d6deb6ad98eab155841f890a42dbc7e8d0584a6))
+
 ## [1.1.1](https://github.com/Vettvangur/Ekom.Payments/compare/Ekom.Payments.Valitor-v1.1.0...Ekom.Payments.Valitor-v1.1.1) (2026-11-18)
 
 
