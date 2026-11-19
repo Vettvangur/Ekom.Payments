@@ -5,24 +5,24 @@ using Ekom.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace Ekom.Payments.Valitor;
+namespace Ekom.Payments.Rapyd;
 
 /// <summary>
-/// An alternative to subscribing to the valitor callback event.
-/// This helper can be invoked in the view or controller that receives the redirect from Valitor.
+/// An alternative to subscribing to the Rapyd callback event.
+/// This helper can be invoked in the view or controller that receives the redirect from Rapyd.
 /// Only returns <see cref="OrderStatus"/> on successful verification
 /// </summary>
-public class ValitorResponseHelper
+public class RapydResponseHelper
 {
-    readonly ILogger<ValitorResponseHelper> _logger;
+    readonly ILogger<RapydResponseHelper> _logger;
     readonly IConfiguration _configuration;
     readonly IOrderPayments _payments;
 
     /// <summary>
     /// ctor
     /// </summary>
-    public ValitorResponseHelper(
-        ILogger<ValitorResponseHelper> logger,
+    public RapydResponseHelper(
+        ILogger<RapydResponseHelper> logger,
         IOrderPayments payments,
         IConfiguration configuration)
     {
@@ -49,44 +49,44 @@ public class ValitorResponseHelper
     }
 
     /// <summary>
-    /// An alternative to subscribing to the valitor callback event.
-    /// This helper can be invoked in the view or controller that receives the redirect from Valitor.
+    /// An alternative to subscribing to the Rapyd callback event.
+    /// This helper can be invoked in the view or controller that receives the redirect from Rapyd.
     /// Only returns the payment on successful verification. <br />
-    /// Verifies the signature as <see cref="ValitorResponseController"/> does: SHA-256 of the verification code
+    /// Verifies the signature as <see cref="RapydResponseController"/> does: SHA-256 of the verification code
     /// followed by the reference number. The verification code is <paramref name="verificationcode"/> when given,
     /// otherwise the one stored with the payment when it was started.
     /// </summary>
     public async Task<OrderPayment?> Verify(
-        Response valitorResp, 
+        Response rapydResp, 
         string? verificationcode = null)
     {
-        if (string.IsNullOrEmpty(valitorResp?.DigitalSignatureResponse)
-        || !Guid.TryParse(valitorResp.ReferenceNumber, out var paymentId))
+        if (string.IsNullOrEmpty(rapydResp?.DigitalSignatureResponse)
+        || !Guid.TryParse(rapydResp.ReferenceNumber, out var paymentId))
         {
-            _logger.LogError("Valitor Payment Response - Missing signature or reference, unable to verify");
+            _logger.LogError("Rapyd Payment Response - Missing signature or reference, unable to verify");
             return null;
         }
 
         var payment = await _payments.GetAsync(paymentId);
         if (payment == null || !PaymentRowGuard.BelongsTo(payment, Payment._ppNodeName))
         {
-            _logger.LogWarning("Valitor Payment Response - Unable to find Valitor payment. PaymentId: {PaymentId}", paymentId);
+            _logger.LogWarning("Rapyd Payment Response - Unable to find Rapyd payment. PaymentId: {PaymentId}", paymentId);
             return null;
         }
 
-        verificationcode ??= payment.GetProviderData<ValitorSettings>()?.VerificationCode;
+        verificationcode ??= payment.GetProviderData<RapydSettings>()?.VerificationCode;
 
         if (string.IsNullOrWhiteSpace(verificationcode))
         {
             _logger.LogError(
-                "Valitor Payment Response - Missing verification code, unable to verify. " + PaymentLog.Template,
+                "Rapyd Payment Response - Missing verification code, unable to verify. " + PaymentLog.Template,
                 payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId);
             return null;
         }
 
-        var digitalSignature = CryptoHelpers.GetSHA256HexStringSum(verificationcode + valitorResp.ReferenceNumber);
+        var digitalSignature = CryptoHelpers.GetSHA256HexStringSum(verificationcode + rapydResp.ReferenceNumber);
 
-        return PaymentRowGuard.SignatureEquals(valitorResp.DigitalSignatureResponse, digitalSignature)
+        return PaymentRowGuard.SignatureEquals(rapydResp.DigitalSignatureResponse, digitalSignature)
             ? payment
             : null;
     }

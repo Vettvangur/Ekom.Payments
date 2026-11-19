@@ -1,9 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Ekom.Payments.Valitor;
+namespace Ekom.Payments.Rapyd;
 
 /// <summary>
-/// Response data from Borgun Server
+/// Response data from Teya Server
 /// </summary>
 public class Response
 {

@@ -7,16 +7,20 @@ using System.Globalization;
 using System.Text;
 using System.Web;
 
-namespace Ekom.Payments.Valitor;
+namespace Ekom.Payments.Rapyd;
 
 /// <summary>
-/// Initiate a payment request with Valitor
+/// Initiate a payment request with Rapyd
 /// </summary>
 public class Payment : IPaymentProvider
 {
+    /// <summary>
+    /// Still the Valitor name: it is the payment provider node name on existing sites
+    /// and the provider type stored on their payments.
+    /// </summary>
     internal const string _ppNodeName = "valitor";
     /// <summary>
-    /// Ekom.Payments ResponseController
+    /// Ekom.Payments ResponseController. Keeps the Valitor url so payments already in flight complete.
     /// </summary>
     const string reportPath = "/ekom/payments/valitorresponse";
 
@@ -47,7 +51,7 @@ public class Payment : IPaymentProvider
     }
 
     /// <summary>
-    /// Initiate a payment request with Valitor.
+    /// Initiate a payment request with Rapyd.
     /// When calling RequestAsync, always await the result.
     /// </summary>
     /// <param name="paymentSettings">Configuration object for PaymentProviders</param>
@@ -62,46 +66,46 @@ public class Payment : IPaymentProvider
 
         try
         {
-            _logger.LogInformation("Valitor Payment Request - Start");
+            _logger.LogInformation("Rapyd Payment Request - Start");
 
-            var valitorSettings = paymentSettings.CustomSettings.ContainsKey(typeof(ValitorSettings))
-                ? paymentSettings.CustomSettings[typeof(ValitorSettings)] as ValitorSettings
-                : new ValitorSettings();
+            var rapydSettings = paymentSettings.CustomSettings.ContainsKey(typeof(RapydSettings))
+                ? paymentSettings.CustomSettings[typeof(RapydSettings)] as RapydSettings
+                : new RapydSettings();
 
             _uService.PopulatePaymentProviderProperties(
                 paymentSettings,
                 _ppNodeName,
-                valitorSettings,
-                ValitorSettings.Properties);
+                rapydSettings,
+                RapydSettings.Properties);
 
             var total = paymentSettings.Orders.Sum(x => x.GrandTotal);
-            if (valitorSettings.LoanType != 0 && total < 30000)
+            if (rapydSettings.LoanType != 0 && total < 30000)
             {
-                throw new ValitorAHKException("Requested loan amount will likely not meet icelandic ÁHK requirements");
+                throw new RapydAHKException("Requested loan amount will likely not meet icelandic ÁHK requirements");
             }
 
-            if (valitorSettings.LoanType != 0 && string.IsNullOrEmpty(valitorSettings.MerchantName))
+            if (rapydSettings.LoanType != 0 && string.IsNullOrEmpty(rapydSettings.MerchantName))
             {
                 throw new NotSupportedException(
-                    "Valitor Loans require MerchantName parameter");
+                    "Rapyd Loans require MerchantName parameter");
             }
 
-            ArgumentNullException.ThrowIfNull(valitorSettings.PaymentPageUrl);
+            ArgumentNullException.ThrowIfNull(rapydSettings.PaymentPageUrl);
             
-            if (string.IsNullOrEmpty(valitorSettings.MerchantId))
+            if (string.IsNullOrEmpty(rapydSettings.MerchantId))
             {
-                throw new ArgumentNullException(nameof(valitorSettings.MerchantId));
+                throw new ArgumentNullException(nameof(rapydSettings.MerchantId));
             }
 
-            var sb = new StringBuilder(valitorSettings.VerificationCode);
+            var sb = new StringBuilder(rapydSettings.VerificationCode);
             sb.Append("0");
 
-            // Store the payment on the Ekom order. Valitor echoes the payment id back as its reference number.
+            // Store the payment on the Ekom order. Rapyd echoes the payment id back as its reference number.
             var payment = await _payments.CreateAsync(
                 paymentSettings,
                 _ppNodeName,
                 total,
-                valitorSettings,
+                rapydSettings,
                 httpContext: _httpCtx
             ).ConfigureAwait(false);
 
@@ -114,7 +118,7 @@ public class Payment : IPaymentProvider
             // Begin populating form values to be submitted
             var formValues = new Dictionary<string, string?>
             {
-                { "MerchantID", valitorSettings.MerchantId },
+                { "MerchantID", rapydSettings.MerchantId },
                 { "AuthorizationOnly", "0" },
 
                 { "ReferenceNumber", payment.PaymentId.ToString() },
@@ -123,11 +127,11 @@ public class Payment : IPaymentProvider
                 { "Language", ParseSupportedLanguages(paymentSettings.Language) },
 
                 { "PaymentSuccessfulURL", paymentSettings.SuccessUrl.ToString() },
-                { "PaymentSuccessfulURLText", /*valitorSettings.SkipReceipt*/ true
+                { "PaymentSuccessfulURLText", /*rapydSettings.SkipReceipt*/ true
                     ? "-" :
-                    valitorSettings.PaymentSuccessfulURLText
+                    rapydSettings.PaymentSuccessfulURLText
                 },
-                { "PaymentSuccessfulAutomaticRedirect", /*valitorSettings.SkipReceipt*/ true
+                { "PaymentSuccessfulAutomaticRedirect", /*rapydSettings.SkipReceipt*/ true
                     ? "1"
                     : "0"
                 },
@@ -136,13 +140,13 @@ public class Payment : IPaymentProvider
                 { "PaymentSuccessfulServerSideURL", reportUrl.ToString() },
             };
 
-            if (valitorSettings.SessionExpiredTimeoutInSeconds != 0
-            && valitorSettings.SessionExpiredRedirectURL != null)
+            if (rapydSettings.SessionExpiredTimeoutInSeconds != 0
+            && rapydSettings.SessionExpiredRedirectURL != null)
             {
-                formValues.Add("SessionExpiredTimeoutInSeconds", valitorSettings.SessionExpiredTimeoutInSeconds.ToString());
-                formValues.Add("SessionExpiredRedirectURL", valitorSettings.SessionExpiredRedirectURL.ToString());
+                formValues.Add("SessionExpiredTimeoutInSeconds", rapydSettings.SessionExpiredTimeoutInSeconds.ToString());
+                formValues.Add("SessionExpiredRedirectURL", rapydSettings.SessionExpiredRedirectURL.ToString());
             }
-            else if (valitorSettings.SessionExpiredTimeoutInSeconds != 0)
+            else if (rapydSettings.SessionExpiredTimeoutInSeconds != 0)
             {
                 _logger.LogError("Requested session expired timeout but could not find redirect url, please configure payment provider with 'timeoutRedirectURL' property");
             }
@@ -169,23 +173,23 @@ public class Payment : IPaymentProvider
                 sb.Append(discount);
             }
 
-            sb.Append(valitorSettings.MerchantId);
+            sb.Append(rapydSettings.MerchantId);
             sb.Append(payment.PaymentId);
             sb.Append(paymentSettings.SuccessUrl);
             sb.Append(reportUrl);
             sb.Append(paymentSettings.Currency);
 
-            if (valitorSettings.LoanType != LoanType.Disabled)
+            if (rapydSettings.LoanType != LoanType.Disabled)
             {
                 formValues.Add("IsCardLoan", "1");
-                formValues.Add("MerchantName", valitorSettings.MerchantName);
+                formValues.Add("MerchantName", rapydSettings.MerchantName);
 
-                if (valitorSettings.LoanType == LoanType.IsLoan)
+                if (rapydSettings.LoanType == LoanType.IsLoan)
                 {
                     formValues.Add("IsInterestFree", "0");
                     sb.Append(0);
                 }
-                else if (valitorSettings.LoanType == LoanType.IsInterestFreeLoan)
+                else if (rapydSettings.LoanType == LoanType.IsInterestFreeLoan)
                 {
                     formValues.Add("IsInterestFree", "1");
                     sb.Append(1);
@@ -194,23 +198,23 @@ public class Payment : IPaymentProvider
 
             formValues.Add("DigitalSignature", CryptoHelpers.GetSHA256HexStringSum(sb.ToString()));
 
-            _logger.LogInformation("Valitor Payment Request - " + PaymentLog.Template + " Amount: {Total}",
+            _logger.LogInformation("Rapyd Payment Request - " + PaymentLog.Template + " Amount: {Total}",
                 payment.OrderNumber, payment.OrderUniqueId, payment.PaymentId, total);
 
             var cspNonce = CspHelper.GetCspNonce(_httpCtx, _config);
 
-            return FormHelper.CreateRequest(formValues, valitorSettings.PaymentPageUrl.ToString(), cspNonce: cspNonce);
+            return FormHelper.CreateRequest(formValues, rapydSettings.PaymentPageUrl.ToString(), cspNonce: cspNonce);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Valitor Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
+            _logger.LogError(ex, "Rapyd Payment Request - Failed. OrderNumber: {OrderNumber} OrderId: {OrderUniqueId}",
                 paymentSettings.OrderNumber, paymentSettings.OrderUniqueId);
             throw;
         }
     }
 
     /// <summary>
-    /// The unit price as sent to Valitor: whole currency units, rounded half away from zero.
+    /// The unit price as sent to Rapyd: whole currency units, rounded half away from zero.
     /// The payment page has only ever been sent whole units by this provider, decimals are not known to be accepted.
     /// </summary>
     internal static string FormatPrice(decimal price)

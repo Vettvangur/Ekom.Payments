@@ -13,7 +13,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.AltaPay/Ekom.Payments.AltaPay.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.AsynchronousExample/Ekom.Payments.AsynchronousExample.csproj" />
-    <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Borgun/Ekom.Payments.Borgun.csproj" />
+    <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Teya/Ekom.Payments.Teya.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Netgiro/Ekom.Payments.Netgiro.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.PayPal/Ekom.Payments.PayPal.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.PayTrail/Ekom.Payments.PayTrail.csproj" />
@@ -21,6 +21,6 @@
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Straumur/Ekom.Payments.Straumur.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Stripe/Ekom.Payments.Stripe.csproj" />
     <ProjectReference Include="../../PaymentProviders/Ekom.Payments.TeyaConsumerloans/Ekom.Payments.TeyaConsumerloans.csproj" />
-    <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Valitor/Ekom.Payments.Valitor.csproj" />
+    <ProjectReference Include="../../PaymentProviders/Ekom.Payments.Rapyd/Ekom.Payments.Rapyd.csproj" />
   </ItemGroup>
 </Project>

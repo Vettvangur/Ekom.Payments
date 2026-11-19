@@ -1,7 +1,7 @@
 using Ekom.Models.Payments;
 using Ekom.Payments.Helpers;
 using Ekom.Payments.Netgiro;
-using Ekom.Payments.Valitor;
+using Ekom.Payments.Rapyd;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -9,16 +9,16 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Xunit;
-using ValitorPayment = Ekom.Payments.Valitor.Payment;
-using ValitorResponse = Ekom.Payments.Valitor.Response;
+using RapydPayment = Ekom.Payments.Rapyd.Payment;
+using RapydResponse = Ekom.Payments.Rapyd.Response;
 
 namespace Ekom.Payments.Tests;
 
 /// <summary>
-/// Valitor stores its payments on the Ekom order: a signed confirmation records one capture
+/// Rapyd stores its payments on the Ekom order: a signed confirmation records one capture
 /// with the card details, anything else records nothing. All secrets are made up.
 /// </summary>
-public sealed class ValitorTests
+public sealed class RapydTests
 {
     const string Code = "valitor-test-code";
 
@@ -41,7 +41,7 @@ public sealed class ValitorTests
     {
         var site = new ProviderTestSite();
         var (payment, _) = await RequestAsync(site, 1990);
-        var response = new ValitorResponse
+        var response = new RapydResponse
         {
             ReferenceNumber = payment.PaymentId.ToString(),
             DigitalSignatureResponse = Sha256Hex(Code + payment.PaymentId),
@@ -71,7 +71,7 @@ public sealed class ValitorTests
         var site = new ProviderTestSite();
         var (payment, _) = await RequestAsync(site, 1990);
 
-        var result = await Controller(site).Post(new ValitorResponse
+        var result = await Controller(site).Post(new RapydResponse
         {
             ReferenceNumber = payment.PaymentId.ToString(),
             DigitalSignatureResponse = Sha256Hex("guess" + payment.PaymentId),
@@ -91,8 +91,8 @@ public sealed class ValitorTests
 
         foreach (var paymentId in new[] { netgiro.PaymentId, legacy.UniqueId })
         {
-            // Neither payment has a Valitor verification code
-            var response = new ValitorResponse
+            // Neither payment has a Rapyd verification code
+            var response = new RapydResponse
             {
                 ReferenceNumber = paymentId.ToString(),
                 DigitalSignatureResponse = Sha256Hex(paymentId.ToString()),
@@ -108,9 +108,9 @@ public sealed class ValitorTests
     public async Task PaymentStartedBeforeTheUpgradeIsCopiedToEkomWhenItsCallbackArrives()
     {
         var site = new ProviderTestSite();
-        var legacy = site.AddLegacyPayment(1990, new ValitorSettings { MerchantId = "1", VerificationCode = Code }, "valitor");
+        var legacy = site.AddLegacyPayment(1990, new RapydSettings { MerchantId = "1", VerificationCode = Code }, "valitor");
 
-        Assert.IsType<OkResult>(await Controller(site).Post(new ValitorResponse
+        Assert.IsType<OkResult>(await Controller(site).Post(new RapydResponse
         {
             ReferenceNumber = legacy.UniqueId.ToString(),
             DigitalSignatureResponse = Sha256Hex(Code + legacy.UniqueId),
@@ -123,16 +123,16 @@ public sealed class ValitorTests
     }
 
     [Fact]
-    public async Task HelperVerifiesTheSha256SignatureValitorSendsWithTheStoredVerificationCode()
+    public async Task HelperVerifiesTheSha256SignatureRapydSendsWithTheStoredVerificationCode()
     {
         var site = new ProviderTestSite();
         var (payment, _) = await RequestAsync(site, 1990);
-        var helper = new ValitorResponseHelper(
-            NullLogger<ValitorResponseHelper>.Instance, site.Payments, new ConfigurationBuilder().Build());
+        var helper = new RapydResponseHelper(
+            NullLogger<RapydResponseHelper>.Instance, site.Payments, new ConfigurationBuilder().Build());
         var reference = payment.PaymentId.ToString();
 
         // Signed like the callback the response controller accepts.
-        var verified = await helper.Verify(new ValitorResponse
+        var verified = await helper.Verify(new RapydResponse
         {
             ReferenceNumber = reference,
             DigitalSignatureResponse = Sha256Hex(Code + reference),
@@ -140,15 +140,15 @@ public sealed class ValitorTests
         Assert.Equal(site.OrderId, verified!.OrderUniqueId);
 
         Assert.NotNull(await helper.Verify(
-            new ValitorResponse { ReferenceNumber = reference, DigitalSignatureResponse = Sha256Hex(Code + reference) },
+            new RapydResponse { ReferenceNumber = reference, DigitalSignatureResponse = Sha256Hex(Code + reference) },
             Code));
         // The old MD5 signature and a signature without the code are not accepted.
-        Assert.Null(await helper.Verify(new ValitorResponse
+        Assert.Null(await helper.Verify(new RapydResponse
         {
             ReferenceNumber = reference,
             DigitalSignatureResponse = CryptoHelpers.GetMD5StringSum(Code + reference),
         }));
-        Assert.Null(await helper.Verify(new ValitorResponse
+        Assert.Null(await helper.Verify(new RapydResponse
         {
             ReferenceNumber = reference,
             DigitalSignatureResponse = Sha256Hex(reference),
@@ -209,18 +209,18 @@ public sealed class ValitorTests
     {
         var settings = site.Settings(total);
         foreach (var item in settings.Orders) order?.Invoke(item);
-        settings.CustomSettings[typeof(ValitorSettings)] = new ValitorSettings
+        settings.CustomSettings[typeof(RapydSettings)] = new RapydSettings
         {
             MerchantId = "1", VerificationCode = Code,
             PaymentPageUrl = new Uri("https://valitor.example/"),
         };
-        var html = await new ValitorPayment(NullLogger<ValitorPayment>.Instance, site.Configuration, site, site.Payments, site,
+        var html = await new RapydPayment(NullLogger<RapydPayment>.Instance, site.Configuration, site, site.Payments, site,
             new ConfigurationBuilder().Build()).RequestAsync(settings);
         return (site.Payments.Payments[^1], ProviderTestSite.ParseForm(html));
     }
 
-    static ValitorResponseController Controller(ProviderTestSite site) => ProviderTestSite.WithRequest(new ValitorResponseController(
-        NullLogger<ValitorResponseController>.Instance, site.Configuration, site.Payments, site.LegacyOrders, site));
+    static RapydResponseController Controller(ProviderTestSite site) => ProviderTestSite.WithRequest(new RapydResponseController(
+        NullLogger<RapydResponseController>.Instance, site.Configuration, site.Payments, site.LegacyOrders, site));
 
     static string Sha256Hex(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 }

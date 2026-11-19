@@ -1,10 +1,10 @@
 using System;
 using System.ComponentModel.DataAnnotations;
 
-namespace Ekom.Payments.Borgun;
+namespace Ekom.Payments.Teya;
 
 /// <summary>
-/// Response data from Borgun Server
+/// Response data from Teya Server
 /// </summary>
 public class Response
 {
@@ -18,7 +18,7 @@ public class Response
     /// Signature that is created by joining together the following parameters with | as separator and using HMAC SHA256 with the merchant secret key to create the checkhash. 
     /// orderid|amount|Currency
     /// <para></para>
-    /// (Secret key is issued by Borgun and known only to merchant and Borgun).
+    /// (Secret key is issued by Teya and known only to merchant and Teya).
     /// <para></para>
     /// See HMAC value creation appendix https://docs.borgun.is/hostedpayments/securepay/#hmac-value-creation
     /// </summary>
@@ -42,7 +42,7 @@ public class Response
     }
 
     /// <summary>
-    /// Payment authorization from Borgun
+    /// Payment authorization from Teya
     /// </summary>
     [RegularExpression("[0-9a-zA-Z]+")]
     public string AuthorizationCode { get; set; }
@@ -54,8 +54,8 @@ public class Response
     public string CreditCardNumber { get; set; }
 
     /// <summary>
-    /// Success message is sent on two occations from Borgun to the webshop. 
-    /// <para></para>First time is after buyer has successfully paid and is being shown a receipt by Borgun. Note that this url request comes from the Borgun server and is not redirected thorugh the buyer browser, it is thus not in the same active session. 
+    /// Success message is sent on two occations from Teya to the webshop. 
+    /// <para></para>First time is after buyer has successfully paid and is being shown a receipt by Teya. Note that this url request comes from the Teya server and is not redirected thorugh the buyer browser, it is thus not in the same active session. 
     /// <para></para>Second time is when the buyer pushes the optional „Back to shop“ button. 
     /// <para></para>
     /// <para></para>The steps are identified by the following values. 

@@ -6,18 +6,18 @@
       "Core/Ekom.Payments.Core.csproj"
     ]
   },
-  "Ekom.Payments.Valitor": {
-    "path": "PaymentProviders/Ekom.Payments.Valitor",
-    "version-file": "PaymentProviders/Ekom.Payments.Valitor/Ekom.Payments.Valitor.csproj",
+  "Ekom.Payments.Rapyd": {
+    "path": "PaymentProviders/Ekom.Payments.Rapyd",
+    "version-file": "PaymentProviders/Ekom.Payments.Rapyd/Ekom.Payments.Rapyd.csproj",
     "projects": [
-      "PaymentProviders/Ekom.Payments.Valitor/Ekom.Payments.Valitor.csproj"
+      "PaymentProviders/Ekom.Payments.Rapyd/Ekom.Payments.Rapyd.csproj"
     ]
   },
-  "Ekom.Payments.Borgun": {
-    "path": "PaymentProviders/Ekom.Payments.Borgun",
-    "version-file": "PaymentProviders/Ekom.Payments.Borgun/Ekom.Payments.Borgun.csproj",
+  "Ekom.Payments.Teya": {
+    "path": "PaymentProviders/Ekom.Payments.Teya",
+    "version-file": "PaymentProviders/Ekom.Payments.Teya/Ekom.Payments.Teya.csproj",
     "projects": [
-      "PaymentProviders/Ekom.Payments.Borgun/Ekom.Payments.Borgun.csproj"
+      "PaymentProviders/Ekom.Payments.Teya/Ekom.Payments.Teya.csproj"
     ]
   },
   "Ekom.Payments.Netgiro": {

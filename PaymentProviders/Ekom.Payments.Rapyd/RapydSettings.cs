@@ -1,6 +1,6 @@
-namespace Ekom.Payments.Valitor;
+namespace Ekom.Payments.Rapyd;
 
-public class ValitorSettings : PaymentSettingsBase<ValitorSettings>
+public class RapydSettings : PaymentSettingsBase<RapydSettings>
 {
     public string ReportUrl { get; set; }
     
@@ -11,13 +11,13 @@ public class ValitorSettings : PaymentSettingsBase<ValitorSettings>
     public string VerificationCode { get; set; }
 
     /// <summary>
-    /// Required by Valitor loans
+    /// Required by Rapyd loans
     /// </summary>
     [EkomProperty(PropertyEditorType.Store)]
     public string MerchantName { get; set; }
 
     /// <summary>
-    /// Required by Valitor loans
+    /// Required by Rapyd loans
     /// </summary>
     public LoanType LoanType { get; set; }
 

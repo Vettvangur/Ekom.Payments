@@ -1,6 +1,6 @@
-namespace Ekom.Payments.Borgun;
+namespace Ekom.Payments.Teya;
 
-public class BorgunSettings : PaymentSettingsBase<BorgunSettings>
+public class TeyaSettings : PaymentSettingsBase<TeyaSettings>
 {
     public string ReportUrl { get; set; }
 

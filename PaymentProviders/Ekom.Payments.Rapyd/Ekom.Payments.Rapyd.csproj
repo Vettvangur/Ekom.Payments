@@ -6,16 +6,16 @@
         <Nullable>enable</Nullable>
 
         <!-- Package properties -->
-        <PackageId>Ekom.Payments.Borgun</PackageId>
+        <PackageId>Ekom.Payments.Rapyd</PackageId>
         <Version>1.1.1</Version>
         <!-- Minimum published Core version used when packaging this provider. -->
         <CorePackageVersion>1.1.0</CorePackageVersion>
-        <Title>Ekom Payments Borgun</Title>
+        <Title>Ekom Payments Rapyd</Title>
         <Authors>Vettvangur</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/Vettvangur/Ekom.Payments</PackageProjectUrl>
         <PackageIcon>images/Ekom_Logo.png</PackageIcon>
-        <Description>Ekom Payments Borgun - Vettvangur E-Commerce solution</Description>
+        <Description>Ekom Payments Rapyd - Vettvangur E-Commerce solution</Description>
         <PackageReleaseNotes/>
         <Copyright>Copyright 2022</Copyright>
         <PackageTags/>
@@ -34,6 +34,15 @@
         <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
 
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <Optimize>False</Optimize>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+      <Optimize>False</Optimize>
     </PropertyGroup>
 
     <ItemGroup>
@@ -53,6 +62,21 @@
     <ItemGroup>
         <ProjectReference Include="..\..\Core\Ekom.Payments.Core.csproj" Condition="'$(UsePublishedCore)' != 'true'"/>
         <PackageReference Include="Ekom.Payments.Core" Version="$(CorePackageVersion)" Condition="'$(UsePublishedCore)' == 'true'"/>
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Update="Properties\Resources.Designer.cs">
+        <DesignTime>True</DesignTime>
+        <AutoGen>True</AutoGen>
+        <DependentUpon>Resources.resx</DependentUpon>
+      </Compile>
+    </ItemGroup>
+
+    <ItemGroup>
+      <EmbeddedResource Update="Properties\Resources.resx">
+        <Generator>ResXFileCodeGenerator</Generator>
+        <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+      </EmbeddedResource>
     </ItemGroup>
 
 </Project>
